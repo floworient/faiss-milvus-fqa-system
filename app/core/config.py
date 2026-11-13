@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     chunk_overlap_ratio: float = Field(default=0.15, ge=0.0, le=0.5)
     retrieval_top_k: int = Field(default=5, gt=0)
     retrieval_candidate_k: int = Field(default=20, gt=0)
+    dashscope_api_key: str | None = None
+    primary_llm_model: str = "qwen-plus"
+    backup_llm_model: str = "qwen-turbo"
+    llm_timeout_seconds: float = Field(default=30.0, gt=0)
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "Settings":
