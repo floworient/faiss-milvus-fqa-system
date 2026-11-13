@@ -14,6 +14,16 @@ class EmbeddingPort(Protocol):
     def embed_query(self, text: str) -> NDArray[np.float32]: ...
 
 
+class UnavailableEmbedding:
+    """Explicit no-key adapter that keeps keyword-only retrieval available."""
+
+    def embed_texts(self, texts: Sequence[str]) -> NDArray[np.float32]:
+        raise EmbeddingUnavailable("Embedding provider is not configured")
+
+    def embed_query(self, text: str) -> NDArray[np.float32]:
+        raise EmbeddingUnavailable("Embedding provider is not configured")
+
+
 class DashScopeEmbeddingAdapter:
     """LlamaIndex DashScope embedding adapter without global Settings mutation."""
 

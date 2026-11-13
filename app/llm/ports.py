@@ -31,6 +31,18 @@ class LLMPort(Protocol):
     def stream(self, prompt: str) -> AsyncIterator[str]: ...
 
 
+class UnavailableLLM:
+    """Explicit no-key provider used to activate retrieval-summary fallback."""
+
+    def complete(self, prompt: str) -> str:
+        raise LLMUnavailable("Language model provider is not configured")
+
+    async def stream(self, prompt: str) -> AsyncIterator[str]:
+        raise LLMUnavailable("Language model provider is not configured")
+        if False:  # pragma: no cover - makes this an async generator by contract
+            yield ""
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
     text: str

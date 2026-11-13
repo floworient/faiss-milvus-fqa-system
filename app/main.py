@@ -3,12 +3,27 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 
+from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.api.errors import app_error_handler
 from app.api.retrieval import router as retrieval_router
+from app.api.sessions import router as sessions_router
+from app.agents.contextual_rag import ContextualRAGStrategy
+from app.agents.registry import AgentRegistry
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.ids import new_id
+from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
+from app.ingestion.parsers import ParserRegistry
+from app.ingestion.service import IngestionService, TaskStore
+from app.llm.dashscope import DashScopeLLMAdapter
+from app.llm.ports import UnavailableLLM
+from app.llm.router import TieredLLMRouter
+from app.memory.store import FileConversationStore
+from app.prompts.registry import PromptRegistry
+from app.retrieval.embeddings import DashScopeEmbeddingAdapter, UnavailableEmbedding
+from app.retrieval.repository import IndexRepository
+from app.retrieval.service import RetrievalService
 
 
 @dataclass(slots=True)
@@ -20,6 +35,52 @@ class ServiceContainer:
     memory: Any | None = None
     agent_registry: Any | None = None
     evaluation: Any | None = None
+
+
+def build_service_container(settings: Settings) -> ServiceContainer:
+    if settings.dashscope_api_key:
+        embedding = DashScopeEmbeddingAdapter(
+            settings.dashscope_api_key,
+            settings.embedding_model,
+            settings.embedding_dimension,
+        )
+        primary_llm = DashScopeLLMAdapter(
+            settings.dashscope_api_key,
+            settings.primary_llm_model,
+            settings.llm_timeout_seconds,
+        )
+        backup_llm = DashScopeLLMAdapter(
+            settings.dashscope_api_key,
+            settings.backup_llm_model,
+            settings.llm_timeout_seconds,
+        )
+    else:
+        embedding = UnavailableEmbedding()
+        primary_llm = UnavailableLLM()
+        backup_llm = None
+    repository = IndexRepository(settings.indexes_dir)
+    retrieval = RetrievalService(repository, embedding)
+    memory = FileConversationStore(settings.sessions_dir)
+    ingestion = IngestionService(
+        settings,
+        ParserRegistry(),
+        AdaptiveChunker(settings, RegexTokenizer()),
+        embedding,
+        repository,
+        TaskStore(settings.tasks_dir),
+    )
+    strategy = ContextualRAGStrategy(
+        retrieval,
+        PromptRegistry.default(),
+        memory,
+        TieredLLMRouter(primary_llm, backup_llm),
+    )
+    return ServiceContainer(
+        ingestion=ingestion,
+        retrieval=retrieval,
+        memory=memory,
+        agent_registry=AgentRegistry([strategy]),
+    )
 
 
 def create_app(
@@ -35,10 +96,12 @@ def create_app(
         description="Development-preview modular RAG backend.",
     )
     app.state.settings = resolved_settings
-    app.state.services = services or ServiceContainer()
+    app.state.services = services if services is not None else build_service_container(resolved_settings)
     app.add_exception_handler(AppError, app_error_handler)
+    app.include_router(chat_router)
     app.include_router(documents_router)
     app.include_router(retrieval_router)
+    app.include_router(sessions_router)
 
     @app.middleware("http")
     async def attach_request_id(request: Request, call_next: Any):

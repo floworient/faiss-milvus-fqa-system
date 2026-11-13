@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(default=5, gt=0)
     retrieval_candidate_k: int = Field(default=20, gt=0)
     dashscope_api_key: str | None = None
+    embedding_model: str = "text-embedding-v3"
+    embedding_dimension: int = Field(default=512, gt=0)
     primary_llm_model: str = "qwen-plus"
     backup_llm_model: str = "qwen-turbo"
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
