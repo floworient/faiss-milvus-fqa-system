@@ -1,7 +1,9 @@
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import asdict
 from typing import Protocol, Sequence
 
+from app.core.logging import log_event
 from app.domain.chat import (
     AgentEvent,
     AgentRequest,
@@ -69,6 +71,13 @@ class ContextualRAGStrategy:
             citations=citations,
             metadata={"provider_tier": generated.tier, **generated.metadata},
         )
+        log_event(
+            logging.getLogger("app.chat"),
+            "chat.completed",
+            session_id=session_id,
+            provider_tier=generated.tier,
+            citation_count=len(citations),
+        )
         return AgentResponse(
             session_id=session_id,
             answer=generated.text,
@@ -133,6 +142,14 @@ class ContextualRAGStrategy:
                     status="complete" if final_status == "complete" else "failed",
                     citations=citations,
                     metadata={"provider_tier": final_tier},
+                )
+                log_event(
+                    logging.getLogger("app.chat"),
+                    "chat.stream_completed",
+                    session_id=session_id,
+                    provider_tier=final_tier,
+                    status=final_status,
+                    citation_count=len(citations),
                 )
             yield AgentEvent(event.type, dict(event.data))
 

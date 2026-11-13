@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path, PurePath
 from threading import Lock
@@ -9,6 +10,7 @@ import numpy as np
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.ids import new_id
+from app.core.logging import log_event
 from app.domain.documents import DocumentRecord, IngestionTask
 from app.ingestion.chunker import AdaptiveChunker
 from app.ingestion.parsers import ParserRegistry
@@ -89,6 +91,13 @@ class IngestionService:
         task = self.task_store.get(task_id)
         task.status = "running"
         self.task_store.save(task)
+        log_event(
+            logging.getLogger("app.ingestion"),
+            "ingestion.started",
+            task_id=task.task_id,
+            document_id=task.document_id,
+            action=task.action,
+        )
         try:
             if task.action == "upload":
                 self._run_upload(task)
@@ -97,11 +106,28 @@ class IngestionService:
             task.status = "succeeded"
             task.code = None
             task.message = None
+            log_event(
+                logging.getLogger("app.ingestion"),
+                "ingestion.completed",
+                task_id=task.task_id,
+                document_id=task.document_id,
+                action=task.action,
+                status=task.status,
+            )
         except Exception as error:
             task.status = "failed"
             task.code = getattr(error, "code", "ingestion_failed")
             task.message = "Document indexing failed."
             task.retryable = True
+            log_event(
+                logging.getLogger("app.ingestion"),
+                "ingestion.failed",
+                task_id=task.task_id,
+                document_id=task.document_id,
+                action=task.action,
+                code=task.code,
+                retryable=task.retryable,
+            )
         self.task_store.save(task)
 
     def list_documents(self) -> list[DocumentRecord]:

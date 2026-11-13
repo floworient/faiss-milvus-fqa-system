@@ -1,5 +1,7 @@
+import logging
 from collections.abc import AsyncIterator, Sequence
 
+from app.core.logging import log_event
 from app.llm.ports import (
     GenerationResult,
     LLMError,
@@ -27,6 +29,7 @@ class TieredLLMRouter:
             raise
         except LLMError as primary_error:
             if self.backup is not None:
+                self._log_fallback(1, 2, primary_error.reason_code)
                 try:
                     return GenerationResult(
                         self.backup.complete(prompt),
@@ -34,8 +37,10 @@ class TieredLLMRouter:
                         safe_citations,
                         {"fallback_reason": primary_error.reason_code},
                     )
-                except LLMError:
-                    pass
+                except LLMError as backup_error:
+                    self._log_fallback(2, 3, backup_error.reason_code)
+            else:
+                self._log_fallback(1, 3, primary_error.reason_code)
             return GenerationResult(
                 self._retrieval_summary(safe_citations),
                 3,
@@ -57,6 +62,7 @@ class TieredLLMRouter:
                 yield LLMEvent("done", {"status": "failed", "tier": 1})
                 return
             next_tier = 2 if self.backup is not None else 3
+            self._log_fallback(1, next_tier, error.reason_code)
             yield LLMEvent(
                 "fallback",
                 {"from_tier": 1, "to_tier": next_tier, "reason": error.reason_code},
@@ -82,6 +88,7 @@ class TieredLLMRouter:
                             "reason": backup_error.reason_code,
                         },
                     )
+                    self._log_fallback(2, 3, backup_error.reason_code)
                     summary = self._retrieval_summary(citations)
                     yield LLMEvent("token", {"text": summary, "tier": 3})
                     yield LLMEvent("done", {"status": "complete", "tier": 3})
@@ -93,6 +100,16 @@ class TieredLLMRouter:
             yield LLMEvent("done", {"status": "complete", "tier": 3})
             return
         yield LLMEvent("done", {"status": "complete", "tier": 1})
+
+    @staticmethod
+    def _log_fallback(from_tier: int, to_tier: int, reason: str) -> None:
+        log_event(
+            logging.getLogger("app.llm"),
+            "llm.fallback",
+            from_tier=from_tier,
+            to_tier=to_tier,
+            reason=reason,
+        )
 
     @staticmethod
     def _retrieval_summary(citations: Sequence[Citation]) -> str:

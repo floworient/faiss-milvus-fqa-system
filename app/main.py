@@ -1,4 +1,6 @@
+import logging
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -14,6 +16,7 @@ from app.agents.registry import AgentRegistry
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.ids import new_id
+from app.core.logging import configure_logging, log_event
 from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
 from app.ingestion.parsers import ParserRegistry
 from app.ingestion.service import IngestionService, TaskStore
@@ -90,6 +93,7 @@ def create_app(
     settings: Settings | None = None,
     services: ServiceContainer | None = None,
 ) -> FastAPI:
+    configure_logging()
     resolved_settings = settings or Settings()
     resolved_settings.ensure_directories()
 
@@ -111,9 +115,23 @@ def create_app(
     async def attach_request_id(request: Request, call_next: Any):
         request_id = request.headers.get("x-request-id") or new_id("req")
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["x-request-id"] = request_id
-        return response
+        started = perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["x-request-id"] = request_id
+            return response
+        finally:
+            log_event(
+                logging.getLogger("app.request"),
+                "request.completed",
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                status_code=status_code,
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:
