@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 
+from app.api.documents import router as documents_router
 from app.api.errors import app_error_handler
 from app.api.retrieval import router as retrieval_router
 from app.core.config import Settings
@@ -36,6 +37,7 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.services = services or ServiceContainer()
     app.add_exception_handler(AppError, app_error_handler)
+    app.include_router(documents_router)
     app.include_router(retrieval_router)
 
     @app.middleware("http")
