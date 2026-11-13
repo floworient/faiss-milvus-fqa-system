@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Development-preview RAG knowledge question-answering backend"
 requires-python = ">=3.10"
 
+[project.scripts]
+rag-eval = "app.evaluation.cli:entrypoint"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -1,0 +1,3 @@
+{"query":"q1","relevant_chunk_ids":["c1"]}
+{"query":"q2","relevant_chunk_ids":["c2"]}
+{"query":"q3","relevant_document_ids":["d3"]}

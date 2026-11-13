@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.api.errors import app_error_handler
+from app.api.evaluations import router as evaluations_router
 from app.api.retrieval import router as retrieval_router
 from app.api.sessions import router as sessions_router
 from app.agents.contextual_rag import ContextualRAGStrategy
@@ -16,6 +17,7 @@ from app.core.ids import new_id
 from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
 from app.ingestion.parsers import ParserRegistry
 from app.ingestion.service import IngestionService, TaskStore
+from app.evaluation.runner import EvaluationRunner
 from app.llm.dashscope import DashScopeLLMAdapter
 from app.llm.ports import UnavailableLLM
 from app.llm.router import TieredLLMRouter
@@ -80,6 +82,7 @@ def build_service_container(settings: Settings) -> ServiceContainer:
         retrieval=retrieval,
         memory=memory,
         agent_registry=AgentRegistry([strategy]),
+        evaluation=EvaluationRunner(retrieval),
     )
 
 
@@ -100,6 +103,7 @@ def create_app(
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(chat_router)
     app.include_router(documents_router)
+    app.include_router(evaluations_router)
     app.include_router(retrieval_router)
     app.include_router(sessions_router)
 
