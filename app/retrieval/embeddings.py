@@ -4,6 +4,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+class EmbeddingUnavailable(RuntimeError):
+    """The configured embedding provider cannot serve the request."""
+
+
 class EmbeddingPort(Protocol):
     def embed_texts(self, texts: Sequence[str]) -> NDArray[np.float32]: ...
 

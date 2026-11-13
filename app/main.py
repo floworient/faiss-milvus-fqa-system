@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from app.api.errors import app_error_handler
+from app.api.retrieval import router as retrieval_router
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.ids import new_id
@@ -35,6 +36,7 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.services = services or ServiceContainer()
     app.add_exception_handler(AppError, app_error_handler)
+    app.include_router(retrieval_router)
 
     @app.middleware("http")
     async def attach_request_id(request: Request, call_next: Any):
