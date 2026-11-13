@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
@@ -112,7 +113,18 @@ class FileConversationStore:
             json.dumps(asdict(conversation), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        temporary.replace(target)
+        self._replace_with_retry(temporary, target)
+
+    @staticmethod
+    def _replace_with_retry(source: Path, target: Path) -> None:
+        for attempt in range(3):
+            try:
+                source.replace(target)
+                return
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
 
     def _lock_for(self, session_id: str) -> Lock:
         with self._locks_guard:

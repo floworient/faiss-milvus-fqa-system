@@ -79,3 +79,26 @@ def test_delete_removes_session_file(tmp_path: Path) -> None:
     with pytest.raises(AppError) as caught:
         store.get(session)
     assert caught.value.code == "session_not_found"
+
+
+def test_atomic_save_retries_a_transient_windows_permission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = FileConversationStore(tmp_path)
+    session = store.create().session_id
+    original_replace = Path.replace
+    attempts = 0
+
+    def flaky_replace(path: Path, target: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError(5, "target is temporarily locked")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+
+    store.append_user(session, "message")
+
+    assert attempts == 2
+    assert store.get(session).messages[0].content == "message"
