@@ -2,3 +2,6 @@
 venv/
 __pycache__/
 .worktrees/
+.pytest_cache/
+.tmp/
+data/runtime/

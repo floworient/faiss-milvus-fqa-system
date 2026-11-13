@@ -18,6 +18,7 @@ numpy>=1.26.0
 
 # 日志和配置
 python-dotenv
+pydantic-settings>=2.0.0
 loguru
 
 # HTTP客户端
@@ -26,3 +27,8 @@ httpx
 # Web API框架
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
+python-multipart>=0.0.9
+
+# 测试
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
