@@ -227,7 +227,7 @@ README 必须突出：
 ## 14. 迁移与兼容
 
 - 将 `FAQ.txt` 作为 `examples/` 或首次摄取示例保留。
-- 旧 `train.py`、`ask.py` 和 `kb_magager.py` 在新流程可替代后，移入 `legacy/` 或保留为带弃用说明的兼容入口；具体选择由实施者根据测试和引用情况决定。
+- 旧 `train.py`、`ask.py`、`config.py`、`data_loader.py` 和 `kb_magager.py` 已按用户明确要求删除，不再提供兼容入口；历史版本仍可从 Git 记录恢复。
 - 已有 `data/faiss_index` 不保证与新索引格式兼容。首次运行建立带 schema/version 的新索引目录，旧数据不静默覆盖。
 - 迁移前不删除用户备份数据。
 

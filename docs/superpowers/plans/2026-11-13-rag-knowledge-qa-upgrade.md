@@ -688,10 +688,6 @@ docs/image/
 
 **Files:**
 - Create: `README.md`
-- Create: `legacy/README.md`
-- Modify: `ask.py`
-- Modify: `train.py`
-- Modify: `kb_magager.py`
 - Modify: `INSTALL_TROUBLESHOOTING.md`
 - Create: `tests/test_readme_commands.py`
 
@@ -712,9 +708,9 @@ docs/image/
 
   Include brand header/badges, preview warning, overview, capabilities table, architecture, module tree, technology, quick start, API/curl examples, SSE event contract, evaluation, project status, roadmap, documentation, security and license-status note. Use commands that were actually verified in Tasks 9–10.
 
-- [ ] **Step 4: Add legacy transition notices**
+- [ ] **Step 4: Document the legacy transition**
 
-  Keep user data untouched. Make old scripts print a concise deprecation notice pointing to `uvicorn app.main:create_app --factory`; fix only syntax/import errors that would break repository-wide checks, and describe old index incompatibility in `legacy/README.md` and troubleshooting docs.
+  Keep user data untouched. Explain that the old root scripts were removed by explicit user decision, point to `uvicorn app.main:create_app --factory`, and describe old index incompatibility in the troubleshooting document.
 
 - [ ] **Step 5: Verify README commands and links**
 
@@ -726,7 +722,7 @@ docs/image/
   Run: `pytest -q`
   Expected: all PASS.
 
-  Run: `python -m compileall app scripts tests ask.py train.py kb_magager.py`
+  Run: `python -m compileall app scripts tests`
   Expected: exit 0.
 
   Run: `git diff --check`
@@ -735,6 +731,6 @@ docs/image/
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add README.md legacy/README.md ask.py train.py kb_magager.py INSTALL_TROUBLESHOOTING.md tests/test_readme_commands.py
+  git add README.md INSTALL_TROUBLESHOOTING.md tests/test_readme_commands.py
   git commit -m "docs: publish development-preview project guide"
   ```
