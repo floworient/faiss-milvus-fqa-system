@@ -1,5 +1,21 @@
 # Python 依赖安装问题排查指南
 
+## 旧版入口与索引迁移
+
+本项目已经从根目录命令行原型升级为 FastAPI 模块化后端。按明确的升级决策，旧入口 `ask.py`、`train.py` 以及与其耦合的 `config.py`、`data_loader.py`、`kb_magager.py` 已删除；原始 FAQ 和用户数据没有随代码清理而删除。
+
+新的唯一服务入口是：
+
+```powershell
+uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+旧版生成的 `faiss.index`、`faiss_index/` 或备份索引与当前的版本化 manifest 协议**不兼容**，系统不会自动加载或覆盖它们。迁移时请保留原始 TXT / JSON / Markdown 文档，通过 `POST /api/v1/documents` 重新入库；确认新任务成功且检索结果正确后，再单独归档旧索引。不要把旧索引文件直接复制进 `data/runtime/indexes/`。
+
+如果只想验证代码而不调用外部服务，可以直接运行 `python -m pytest -q`；测试使用 Fake Embedding / LLM，无需 DashScope API Key。真实文档入库和问答运行需要在 `.env` 中配置 `RAG_DASHSCOPE_API_KEY`。
+
+---
+
 ## 📋 目录
 - [如何识别版本不兼容问题](#如何识别版本不兼容问题)
 - [标准化解决步骤](#标准化解决步骤)
