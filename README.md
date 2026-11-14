@@ -10,11 +10,11 @@
 </p>
 
 > [!IMPORTANT]
-> **开发预览版**：这是一个可运行、可测试、可继续升级的 RAG 后端，不是最终生产项目。当前没有认证、租户隔离、限流或恶意文件扫描，请只在本机或受信网络运行，**不要直接暴露到公网**。
+> **开发预览版**：这是一个可运行、可测试、可继续升级的全栈 RAG 系统，不是最终生产项目。当前没有认证、租户隔离、限流或恶意文件扫描，请只在本机或受信网络运行，**不要直接暴露到公网**。
 
 ## 项目简介
 
-RAG Knowledge QA 是一个基于模块化单体架构的智能知识问答后端。系统支持 TXT、JSON、Markdown 文档上传与持久任务状态，使用自适应分块、Faiss 向量召回和关键词召回构建混合检索链路，再由可扩展 Agent 组织多轮上下文、Prompt 和三级 LLM 降级。FastAPI 对外提供 REST、SSE 流式问答与 JSONL 评测接口。
+RAG Knowledge QA 是一个基于模块化单体后端与 Vue 3 管理台的智能知识问答系统。系统支持 TXT、JSON、Markdown 文档上传与持久任务状态，使用自适应分块、Faiss 向量召回和关键词召回构建混合检索链路，再由可扩展 Agent 组织多轮上下文、Prompt 和三级 LLM 降级。FastAPI 对外提供 REST、SSE 流式问答与 JSONL 评测接口，Vue 3 前端覆盖知识库、检索调试、流式对话和效果评测工作流。
 
 这个仓库重点解决的不只是“能回答”，还包括索引原子发布、删除一致性、可审计降级、会话持久化、结构化安全日志和离线评测等工程问题。
 
@@ -28,6 +28,7 @@ RAG Knowledge QA 是一个基于模块化单体架构的智能知识问答后端
 | 文本处理 | 动态 Chunk Size；重叠窗口；稳定 Chunk ID | 语义边界分块；表格与代码专用分块 |
 | 检索 | Faiss 向量检索；关键词检索；RRF 双路融合；向量不可用时降级 | 可学习重排；查询扩展；Milvus 适配器 |
 | 问答 | 策略模式 Agent；多轮记忆；Prompt 版本管理；引用返回 | Plan-and-Execute；工具调用；引用事实核验 |
+| 管理台 | Vue 3 响应式界面；文档管理；检索调试；SSE 问答；JSONL 评测 | 鉴权界面；多租户工作区；可观测看板 |
 | 模型高可用 | 主模型 → 备用模型 → 检索摘要三级降级；SSE 首 token 边界 | 熔断、限流、异步供应商客户端 |
 | 评测 | Hit@1、Recall@K、MRR、人工问答准确率字段；CLI / API | 版本对比看板；自动回归门禁；200 条正式数据集 |
 | 工程能力 | 应用工厂；依赖注入；结构化日志；request/task/session ID；94+ 自动化测试 | 鉴权、租户隔离、可观测平台、分布式部署 |
@@ -39,6 +40,7 @@ RAG Knowledge QA 是一个基于模块化单体架构的智能知识问答后端
 ## 技术栈
 
 - Python 3.10+、FastAPI、Pydantic Settings、Uvicorn
+- Vue 3、TypeScript、Vite、Vue Router、Vitest
 - LlamaIndex DashScope Embedding 适配器（不修改全局 `Settings`）
 - Faiss、NumPy、自实现关键词索引与 Reciprocal Rank Fusion
 - DashScope 主/备用大模型
@@ -61,6 +63,7 @@ app/
 └── schemas/      # API 输入输出模型
 scripts/
 └── smoke_test.py # 仅通过公共 HTTP API 验证完整工作流
+frontend/          # Vue 3 管理台、API Client 与 SSE 解析
 tests/            # 单元、集成、文档契约测试
 docs/             # 架构说明与 SVG 资产
 ```
@@ -68,6 +71,8 @@ docs/             # 架构说明与 SVG 资产
 更完整的边界、数据流、信任边界和单进程限制见[系统架构说明](docs/architecture.md)。
 
 ## 快速开始
+
+> Vue 3 管理台位于 [`frontend/`](frontend/README.md)，对接本文档描述的全部上传、检索、问答、SSE、会话与评测接口。
 
 ### 1. 创建环境并安装依赖
 
