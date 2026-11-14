@@ -48,16 +48,19 @@ def build_service_container(settings: Settings) -> ServiceContainer:
             settings.dashscope_api_key,
             settings.embedding_model,
             settings.embedding_dimension,
+            settings.dashscope_base_url,
         )
         primary_llm = DashScopeLLMAdapter(
             settings.dashscope_api_key,
             settings.primary_llm_model,
-            settings.llm_timeout_seconds,
+            settings.dashscope_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
         )
         backup_llm = DashScopeLLMAdapter(
             settings.dashscope_api_key,
             settings.backup_llm_model,
-            settings.llm_timeout_seconds,
+            settings.dashscope_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
         )
     else:
         embedding = UnavailableEmbedding()

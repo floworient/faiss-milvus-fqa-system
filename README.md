@@ -102,11 +102,14 @@ cp .env.example .env
 
 ```dotenv
 RAG_DASHSCOPE_API_KEY=your-api-key
+RAG_DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/api/v1
 RAG_EMBEDDING_MODEL=text-embedding-v3
 RAG_EMBEDDING_DIMENSION=512
 RAG_PRIMARY_LLM_MODEL=qwen-plus
 RAG_BACKUP_LLM_MODEL=qwen-turbo
 ```
+
+`RAG_DASHSCOPE_BASE_URL` 使用 DashScope 原生 API 的完整基础地址。官方服务必须包含 `/api/v1`；系统不会自动追加 `/v1` 或 `/api/v1`，自定义代理或私有网关也应填写自身的完整版本路径。该地址不是 OpenAI 兼容接口的 `/compatible-mode/v1` 地址。
 
 真实文档入库需要 Embedding，因此正常运行需配置 DashScope Key。自动化测试全部使用确定性 Fake Embedding / Fake LLM，**无需 API Key**，也不会访问网络。
 

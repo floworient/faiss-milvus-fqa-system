@@ -1,5 +1,6 @@
 from typing import Protocol, Sequence
 
+import dashscope
 import numpy as np
 from numpy.typing import NDArray
 
@@ -27,7 +28,11 @@ class UnavailableEmbedding:
 class DashScopeEmbeddingAdapter:
     """LlamaIndex DashScope embedding adapter without global Settings mutation."""
 
-    def __init__(self, api_key: str, model: str, dimension: int) -> None:
+    def __init__(
+        self, api_key: str, model: str, dimension: int, base_url: str
+    ) -> None:
+        dashscope.base_http_api_url = base_url
+
         from llama_index.embeddings.dashscope import DashScopeEmbedding
 
         self._model = DashScopeEmbedding(

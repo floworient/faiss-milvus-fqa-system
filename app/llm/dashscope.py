@@ -13,9 +13,16 @@ from app.llm.ports import (
 
 
 class DashScopeLLMAdapter:
-    def __init__(self, api_key: str, model: str, timeout_seconds: float = 30.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        timeout_seconds: float = 30.0,
+    ) -> None:
         self.api_key = api_key
         self.model = model
+        self.base_url = base_url
         self.timeout_seconds = timeout_seconds
 
     def complete(self, prompt: str) -> str:
@@ -25,6 +32,7 @@ class DashScopeLLMAdapter:
                 model=self.model,
                 prompt=prompt,
                 result_format="message",
+                base_address=self.base_url,
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as error:
@@ -44,6 +52,7 @@ class DashScopeLLMAdapter:
                 result_format="message",
                 stream=True,
                 incremental_output=True,
+                base_address=self.base_url,
                 timeout=self.timeout_seconds,
             )
             iterator = iter(responses)
