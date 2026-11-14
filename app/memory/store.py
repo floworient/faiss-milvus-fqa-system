@@ -98,6 +98,23 @@ class FileConversationStore:
             raise AppError("session_not_found", "Session was not found.", 404)
         path.unlink()
 
+    def redact_document(self, document_id: str) -> None:
+        """Remove persisted source excerpts for a deleted document."""
+        for path in self.root.glob("session_*.json"):
+            session_id = path.stem
+            lock = self._lock_for(session_id)
+            with lock:
+                conversation = self.get(session_id)
+                changed = False
+                for message in conversation.messages:
+                    for citation in message.citations:
+                        if citation.document_id == document_id:
+                            citation.deleted = True
+                            citation.excerpt = None
+                            changed = True
+                if changed:
+                    self._save(conversation)
+
     def _append(self, session_id: str, message: Message) -> Message:
         lock = self._lock_for(session_id)
         with lock:

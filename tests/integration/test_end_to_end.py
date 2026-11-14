@@ -72,6 +72,7 @@ def build_app(tmp_path: Path):
         embedding,
         repository,
         TaskStore(settings.tasks_dir),
+        memory,
     )
     services = ServiceContainer(
         ingestion=ingestion,
@@ -96,6 +97,9 @@ async def test_complete_backend_workflow_and_safe_structured_logs(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         summary = await run_smoke(client, document, source_name="knowledge.md")
+        deleted_session = await client.get(
+            f"/api/v1/sessions/{summary['session_id']}"
+        )
         fallback = await client.post(
             "/api/v1/chat/completions", json={"question": "再次回答"}
         )
@@ -113,6 +117,11 @@ async def test_complete_backend_workflow_and_safe_structured_logs(
     assert summary["evaluation_queries"] == 1
     assert summary["delete_status"] == "succeeded"
     assert summary["remaining_results"] == 0
+    assert deleted_session.status_code == 200
+    deleted_citation = deleted_session.json()["messages"][1]["citations"][0]
+    assert deleted_citation["deleted"] is True
+    assert deleted_citation["excerpt"] is None
+    assert "PRIVATE_FULL_TEXT_MARKER" not in deleted_session.text
     assert fallback.status_code == 200
     assert fallback.json()["provider_tier"] == 2
 

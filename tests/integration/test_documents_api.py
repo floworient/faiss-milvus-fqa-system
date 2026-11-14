@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from app.core.config import Settings
+from app.core.errors import AppError
 from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
 from app.ingestion.parsers import ParserRegistry
 from app.ingestion.service import IngestionService, TaskStore
@@ -144,6 +145,27 @@ def test_embedding_failure_keeps_previous_active_index(tmp_path: Path) -> None:
     assert repository.load_active().version == active_version
 
 
+def test_metadata_failure_after_upload_publication_restores_previous_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, service, repository, _ = build_app(tmp_path)
+    first = service.create_upload("first.txt", b"working content")
+    service.run(first.task_id)
+    active_version = repository.load_active().version
+    documents_before = service.list_documents()
+
+    def fail_save(*args, **kwargs):
+        raise OSError("documents unavailable")
+
+    monkeypatch.setattr(service, "_save_documents", fail_save)
+    second = service.create_upload("second.txt", b"new content")
+    service.run(second.task_id)
+
+    assert service.task_store.get(second.task_id).status == "failed"
+    assert repository.load_active().version == active_version
+    assert service.list_documents() == documents_before
+
+
 def test_pending_task_is_marked_retryable_failed_after_restart(tmp_path: Path) -> None:
     _, service, _, _ = build_app(tmp_path)
     task = service.create_upload("guide.txt", b"content")
@@ -205,3 +227,42 @@ async def test_failed_delete_preserves_active_index_and_source(
     assert repository.load_active().version == active_version
     assert (service.settings.uploads_dir / f"{document_id}.source").is_file()
     assert [item.document_id for item in service.list_documents()] == [document_id]
+
+
+@pytest.mark.asyncio
+async def test_failure_after_delete_publication_restores_all_previous_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app, service, repository, _ = build_app(tmp_path)
+    upload = await request(
+        app, "POST", "/api/v1/documents", files={"file": ("guide.txt", b"refund")}
+    )
+    document_id = upload.json()["document_id"]
+    active_version = repository.load_active().version
+
+    original_write = service._write_json_atomic
+
+    def fail_tombstone(path: Path, payload: object) -> None:
+        if path == service.deleted_sources_file:
+            raise OSError("tombstone unavailable")
+        original_write(path, payload)
+
+    monkeypatch.setattr(service, "_write_json_atomic", fail_tombstone)
+    response = await request(app, "DELETE", f"/api/v1/documents/{document_id}")
+
+    assert service.task_store.get(response.json()["task_id"]).status == "failed"
+    assert repository.load_active().version == active_version
+    assert (service.settings.uploads_dir / f"{document_id}.source").is_file()
+    assert [item.document_id for item in service.list_documents()] == [document_id]
+    assert service.list_deleted_sources() == []
+
+
+def test_task_store_rejects_noncanonical_id_before_path_resolution(
+    tmp_path: Path,
+) -> None:
+    store = TaskStore(tmp_path / "tasks")
+
+    with pytest.raises(AppError) as caught:
+        store.get("task_..\\..\\secret")
+
+    assert caught.value.code == "task_not_found"

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from http import HTTPStatus
 
@@ -35,7 +36,8 @@ class DashScopeLLMAdapter:
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         try:
-            responses = dashscope.Generation.call(
+            responses = await asyncio.to_thread(
+                dashscope.Generation.call,
                 api_key=self.api_key,
                 model=self.model,
                 prompt=prompt,
@@ -44,7 +46,13 @@ class DashScopeLLMAdapter:
                 incremental_output=True,
                 timeout=self.timeout_seconds,
             )
-            for response in responses:
+            iterator = iter(responses)
+            while True:
+                available, response = await asyncio.to_thread(
+                    self._next_response, iterator
+                )
+                if not available:
+                    break
                 self._raise_for_response(response)
                 content = response.output.choices[0].message.content
                 if content:
@@ -55,6 +63,13 @@ class DashScopeLLMAdapter:
             raise
         except Exception as error:
             raise LLMUnavailable("DashScope stream failed") from error
+
+    @staticmethod
+    def _next_response(iterator: object) -> tuple[bool, object | None]:
+        try:
+            return True, next(iterator)
+        except StopIteration:
+            return False, None
 
     @staticmethod
     def _raise_for_response(response: object) -> None:

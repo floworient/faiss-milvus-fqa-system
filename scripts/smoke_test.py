@@ -89,6 +89,7 @@ async def run_smoke(
         "upload_status": upload_task["status"],
         "retrieval_count": len(results),
         "chat_tier": chat.json()["provider_tier"],
+        "session_id": chat.json()["session_id"],
         "sse_events": _sse_events(stream.text),
         "evaluation_queries": evaluation.json()["query_count"],
         "delete_status": delete_task["status"],

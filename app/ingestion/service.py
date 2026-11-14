@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import asdict
 from pathlib import Path, PurePath
 from threading import Lock
@@ -14,11 +15,14 @@ from app.core.logging import log_event
 from app.domain.documents import DocumentRecord, IngestionTask
 from app.ingestion.chunker import AdaptiveChunker
 from app.ingestion.parsers import ParserRegistry
+from app.memory.store import FileConversationStore
 from app.retrieval.embeddings import EmbeddingPort
 from app.retrieval.repository import IndexRepository
 
 
 class TaskStore:
+    _task_id_pattern = re.compile(r"task_[0-9a-f]{32}")
+
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
@@ -34,6 +38,8 @@ class TaskStore:
             temporary.replace(target)
 
     def get(self, task_id: str) -> IngestionTask:
+        if self._task_id_pattern.fullmatch(task_id) is None:
+            raise AppError("task_not_found", "Task was not found.", 404)
         target = self.root / f"{task_id}.json"
         if not target.is_file():
             raise AppError("task_not_found", "Task was not found.", 404)
@@ -59,6 +65,7 @@ class IngestionService:
         embedding: EmbeddingPort,
         repository: IndexRepository,
         task_store: TaskStore,
+        conversation_store: FileConversationStore | None = None,
     ) -> None:
         self.settings = settings
         self.settings.ensure_directories()
@@ -67,6 +74,7 @@ class IngestionService:
         self.embedding = embedding
         self.repository = repository
         self.task_store = task_store
+        self.conversation_store = conversation_store
         self.documents_file = settings.data_dir / "documents.json"
         self.deleted_sources_file = settings.data_dir / "deleted_sources.json"
         self._lock = Lock()
@@ -151,11 +159,11 @@ class IngestionService:
         new_chunks = [chunk for document in documents for chunk in self.chunker.split(document)]
         with self._lock:
             snapshot = self.repository.load_active()
+            previous_documents = self._read_optional(self.documents_file)
             chunks = [
                 item for item in snapshot.chunks if item.document_id != task.document_id
             ] + new_chunks
             vectors = self.embedding.embed_texts([item.text for item in chunks])
-            self.repository.publish(chunks, vectors)
             records = [
                 item for item in self.list_documents() if item.document_id != task.document_id
             ]
@@ -164,7 +172,13 @@ class IngestionService:
                     task.document_id, task.source_name, "active", len(new_chunks)
                 )
             )
-            self._save_documents(records)
+            try:
+                self.repository.publish(chunks, vectors)
+                self._save_documents(records)
+            except Exception:
+                self.repository.activate(snapshot.version)
+                self._restore_optional(self.documents_file, previous_documents)
+                raise
 
     def create_delete(self, document_id: str) -> IngestionTask:
         records = self.list_documents()
@@ -185,6 +199,8 @@ class IngestionService:
     def _run_delete(self, task: IngestionTask) -> None:
         with self._lock:
             snapshot = self.repository.load_active()
+            previous_documents = self._read_optional(self.documents_file)
+            previous_tombstones = self._read_optional(self.deleted_sources_file)
             remaining = [
                 item for item in snapshot.chunks if item.document_id != task.document_id
             ]
@@ -218,9 +234,16 @@ class IngestionService:
                     }
                 )
                 self._write_json_atomic(self.deleted_sources_file, tombstones)
+                if self.conversation_store is not None:
+                    self.conversation_store.redact_document(task.document_id)
                 if staged_source.exists():
                     staged_source.unlink()
             except Exception:
+                self.repository.activate(snapshot.version)
+                self._restore_optional(self.documents_file, previous_documents)
+                self._restore_optional(
+                    self.deleted_sources_file, previous_tombstones
+                )
                 if staged_source.exists() and not source.exists():
                     staged_source.replace(source)
                 raise
@@ -234,6 +257,19 @@ class IngestionService:
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        temporary.replace(path)
+
+    @staticmethod
+    def _read_optional(path: Path) -> bytes | None:
+        return path.read_bytes() if path.is_file() else None
+
+    @staticmethod
+    def _restore_optional(path: Path, content: bytes | None) -> None:
+        if content is None:
+            path.unlink(missing_ok=True)
+            return
+        temporary = path.with_suffix(path.suffix + ".rollback")
+        temporary.write_bytes(content)
         temporary.replace(path)
 
     @staticmethod

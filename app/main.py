@@ -73,6 +73,7 @@ def build_service_container(settings: Settings) -> ServiceContainer:
         embedding,
         repository,
         TaskStore(settings.tasks_dir),
+        memory,
     )
     strategy = ContextualRAGStrategy(
         retrieval,

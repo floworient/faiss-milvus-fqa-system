@@ -69,10 +69,22 @@ class IndexRepository:
         }
         self._write_json(staging_dir / "manifest.json", manifest)
         staging_dir.rename(final_dir)
+        self.activate(version)
+        return version
+
+    def activate(self, version: str | None) -> None:
+        """Atomically select a prepared version, or restore the empty state."""
+        self.root.mkdir(parents=True, exist_ok=True)
+        active_file = self.root / "ACTIVE"
+        if version is None:
+            active_file.unlink(missing_ok=True)
+            (self.root / "ACTIVE.tmp").unlink(missing_ok=True)
+            return
+        if not (self.root / version).is_dir() or version.endswith(".staging"):
+            raise ValueError(f"index version is not ready: {version}")
         active_tmp = self.root / "ACTIVE.tmp"
         active_tmp.write_text(version, encoding="utf-8")
-        os.replace(active_tmp, self.root / "ACTIVE")
-        return version
+        os.replace(active_tmp, active_file)
 
     def load_active(self) -> IndexSnapshot:
         active_file = self.root / "ACTIVE"
