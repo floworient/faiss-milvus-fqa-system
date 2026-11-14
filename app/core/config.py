@@ -1,7 +1,10 @@
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, HttpUrl, TypeAdapter, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
 
 
 class Settings(BaseSettings):
@@ -21,11 +24,19 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(default=5, gt=0)
     retrieval_candidate_k: int = Field(default=20, gt=0)
     dashscope_api_key: str | None = None
+    dashscope_base_url: str = "https://dashscope.aliyuncs.com/api/v1"
     embedding_model: str = "text-embedding-v3"
     embedding_dimension: int = Field(default=512, gt=0)
     primary_llm_model: str = "qwen-plus"
     backup_llm_model: str = "qwen-turbo"
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @field_validator("dashscope_base_url", mode="before")
+    @classmethod
+    def validate_dashscope_base_url(cls, value: object) -> str:
+        normalized = str(value).rstrip("/")
+        _HTTP_URL_ADAPTER.validate_python(normalized)
+        return normalized
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "Settings":
