@@ -155,6 +155,8 @@ def test_tombstone_redacts_legacy_excerpt_on_read(tmp_path: Path) -> None:
     )
 
     citation = store.get(session).messages[0].citations[0]
+    persisted = (tmp_path / "sessions" / f"{session}.json").read_text("utf-8")
 
     assert citation.deleted is True
     assert citation.excerpt is None
+    assert "secret text" not in persisted

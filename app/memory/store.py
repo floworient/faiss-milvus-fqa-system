@@ -19,7 +19,7 @@ class FileConversationStore:
         self.deleted_sources_file = (
             Path(deleted_sources_file) if deleted_sources_file is not None else None
         )
-        self._locks: dict[str, Lock] = {}
+        self._locks: dict[str, RLock] = {}
         self._locks_guard = Lock()
         self._document_guard = RLock()
 
@@ -30,26 +30,31 @@ class FileConversationStore:
 
     def get(self, session_id: str) -> Conversation:
         path = self._path(session_id)
-        if not path.is_file():
-            raise AppError("session_not_found", "Session was not found.", 404)
-        payload = json.loads(path.read_text("utf-8"))
-        messages = [
-            Message(
-                role=item["role"],
-                content=item["content"],
-                status=item.get("status", "complete"),
-                citations=[Citation(**citation) for citation in item.get("citations", [])],
-                metadata=item.get("metadata", {}),
+        lock = self._lock_for(session_id)
+        with self._document_guard, lock:
+            if not path.is_file():
+                raise AppError("session_not_found", "Session was not found.", 404)
+            payload = json.loads(path.read_text("utf-8"))
+            messages = [
+                Message(
+                    role=item["role"],
+                    content=item["content"],
+                    status=item.get("status", "complete"),
+                    citations=[
+                        Citation(**citation) for citation in item.get("citations", [])
+                    ],
+                    metadata=item.get("metadata", {}),
+                )
+                for item in payload.get("messages", [])
+            ]
+            conversation = Conversation(
+                session_id=payload["session_id"],
+                messages=messages,
+                metadata=payload.get("metadata", {}),
             )
-            for item in payload.get("messages", [])
-        ]
-        conversation = Conversation(
-            session_id=payload["session_id"],
-            messages=messages,
-            metadata=payload.get("metadata", {}),
-        )
-        self._redact_deleted(conversation)
-        return conversation
+            if self._redact_deleted(conversation):
+                self._save(conversation)
+            return conversation
 
     def append_user(self, session_id: str, content: str) -> Message:
         return self._append(session_id, Message("user", content.strip()))
@@ -157,15 +162,20 @@ class FileConversationStore:
                     raise
                 time.sleep(0.01 * (attempt + 1))
 
-    def _redact_deleted(self, conversation: Conversation) -> None:
+    def _redact_deleted(self, conversation: Conversation) -> bool:
         deleted_ids = self._deleted_document_ids()
         if not deleted_ids:
-            return
+            return False
+        changed = False
         for message in conversation.messages:
             for citation in message.citations:
-                if citation.document_id in deleted_ids:
+                if citation.document_id in deleted_ids and (
+                    not citation.deleted or citation.excerpt is not None
+                ):
                     citation.deleted = True
                     citation.excerpt = None
+                    changed = True
+        return changed
 
     def _deleted_document_ids(self) -> set[str]:
         path = self.deleted_sources_file
@@ -180,9 +190,9 @@ class FileConversationStore:
             and item.get("document_id")
         }
 
-    def _lock_for(self, session_id: str) -> Lock:
+    def _lock_for(self, session_id: str) -> RLock:
         with self._locks_guard:
-            return self._locks.setdefault(session_id, Lock())
+            return self._locks.setdefault(session_id, RLock())
 
     def _path(self, session_id: str) -> Path:
         if not session_id.startswith("session_") or any(
