@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title description">
+  <title id="title">RAG Knowledge QA 项目标志</title>
+  <desc id="description">相连的知识节点汇聚为带有光标的回答气泡。</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111B3A"/>
+      <stop offset="1" stop-color="#0A1024"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#36D1DC"/>
+      <stop offset="1" stop-color="#7B61FF"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="944" height="224" rx="42" fill="url(#panel)" stroke="#263760" stroke-width="2"/>
+  <g transform="translate(42 34)">
+    <rect width="172" height="172" rx="40" fill="#0D1732" stroke="#385184" stroke-width="2"/>
+    <path d="M38 57 L76 34 L112 60 L137 41 M76 34 L78 91 M38 57 L52 111 L100 137 M78 91 L52 111 M78 91 L120 112 M112 60 L120 112 L100 137"
+          fill="none" stroke="#405A92" stroke-width="4" stroke-linecap="round"/>
+    <g fill="url(#signal)" filter="url(#glow)">
+      <circle cx="38" cy="57" r="8"/><circle cx="76" cy="34" r="9"/>
+      <circle cx="112" cy="60" r="8"/><circle cx="137" cy="41" r="7"/>
+      <circle cx="52" cy="111" r="8"/><circle cx="100" cy="137" r="9"/>
+    </g>
+    <path d="M69 74 H132 A18 18 0 0 1 150 92 V126 A18 18 0 0 1 132 144 H111 L96 158 V144 H69 A18 18 0 0 1 51 126 V92 A18 18 0 0 1 69 74 Z"
+          fill="#111F41" stroke="url(#signal)" stroke-width="4"/>
+    <path d="M75 99 H127 M75 116 H115" stroke="#EAF2FF" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g font-family="system-ui, sans-serif">
+    <text x="252" y="104" fill="#F5F8FF" font-size="54" font-weight="760" letter-spacing="1">RAG Knowledge QA</text>
+    <text x="255" y="151" fill="#8EA7D5" font-size="22" letter-spacing="3">RETRIEVE · REASON · RESPOND</text>
+    <rect x="255" y="172" width="430" height="4" rx="2" fill="url(#signal)"/>
+  </g>
+</svg>

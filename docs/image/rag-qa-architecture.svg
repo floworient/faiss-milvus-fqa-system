@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="title description">
+  <title id="title">RAG Knowledge QA 系统架构</title>
+  <desc id="description">展示文档入库、混合检索、Agent 问答、三级模型降级、会话记忆与评测链路。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#091124"/><stop offset="1" stop-color="#101A37"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#6F88B8"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity=".45"/></filter>
+  </defs>
+  <rect width="1440" height="900" rx="30" fill="url(#bg)"/>
+  <g font-family="system-ui, sans-serif">
+    <text x="64" y="72" fill="#F6F8FF" font-size="32" font-weight="750">RAG Knowledge QA · Modular Monolith</text>
+    <text x="64" y="104" fill="#8EA7D5" font-size="17">公共 HTTP API · 原子索引发布 · 可追踪降级 · 本地持久化</text>
+
+    <g filter="url(#shadow)">
+      <rect x="64" y="152" width="212" height="590" rx="24" fill="#101D3B" stroke="#30466F"/>
+      <text x="90" y="196" fill="#93A9D2" font-size="14" font-weight="700" letter-spacing="2">ENTRY</text>
+      <rect x="88" y="222" width="164" height="82" rx="16" fill="#15284B" stroke="#38BDF8"/>
+      <text x="170" y="257" fill="#EAF6FF" font-size="22" text-anchor="middle" font-weight="700">FastAPI</text>
+      <text x="170" y="282" fill="#8FB7DB" font-size="14" text-anchor="middle">REST + SSE</text>
+      <rect x="88" y="338" width="164" height="82" rx="16" fill="#15284B" stroke="#4B6B9C"/>
+      <text x="170" y="373" fill="#EAF2FF" font-size="18" text-anchor="middle" font-weight="650">Documents</text>
+      <text x="170" y="398" fill="#8EA7D5" font-size="14" text-anchor="middle">TXT · JSON · MD</text>
+      <rect x="88" y="454" width="164" height="82" rx="16" fill="#15284B" stroke="#4B6B9C"/>
+      <text x="170" y="489" fill="#EAF2FF" font-size="18" text-anchor="middle" font-weight="650">Questions</text>
+      <text x="170" y="514" fill="#8EA7D5" font-size="14" text-anchor="middle">single · stream</text>
+      <rect x="88" y="570" width="164" height="82" rx="16" fill="#15284B" stroke="#4B6B9C"/>
+      <text x="170" y="605" fill="#EAF2FF" font-size="18" text-anchor="middle" font-weight="650">Datasets</text>
+      <text x="170" y="630" fill="#8EA7D5" font-size="14" text-anchor="middle">JSONL</text>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="320" y="152" width="1056" height="250" rx="24" fill="#0E1A35" stroke="#2B426C"/>
+      <text x="346" y="193" fill="#62DBD5" font-size="14" font-weight="700" letter-spacing="2">INGESTION PATH</text>
+      <rect x="348" y="222" width="180" height="112" rx="18" fill="#132744" stroke="#2DD4BF"/>
+      <text x="438" y="265" fill="#ECFEFF" font-size="20" text-anchor="middle" font-weight="700">Ingestion</text>
+      <text x="438" y="292" fill="#91C8CC" font-size="14" text-anchor="middle">parse + validate</text>
+      <text x="438" y="313" fill="#91C8CC" font-size="14" text-anchor="middle">durable tasks</text>
+      <rect x="576" y="222" width="180" height="112" rx="18" fill="#132744" stroke="#2DD4BF"/>
+      <text x="666" y="265" fill="#ECFEFF" font-size="19" text-anchor="middle" font-weight="700">Adaptive Chunking</text>
+      <text x="666" y="292" fill="#91C8CC" font-size="14" text-anchor="middle">dynamic size</text>
+      <text x="666" y="313" fill="#91C8CC" font-size="14" text-anchor="middle">overlap window</text>
+      <rect x="804" y="222" width="180" height="112" rx="18" fill="#132744" stroke="#2DD4BF"/>
+      <text x="894" y="265" fill="#ECFEFF" font-size="19" text-anchor="middle" font-weight="700">Embedding</text>
+      <text x="894" y="292" fill="#91C8CC" font-size="14" text-anchor="middle">vectorize chunks</text>
+      <rect x="1032" y="222" width="316" height="112" rx="18" fill="#132744" stroke="#2DD4BF"/>
+      <text x="1190" y="260" fill="#ECFEFF" font-size="19" text-anchor="middle" font-weight="700">Atomic Index Publication</text>
+      <text x="1110" y="299" fill="#7DD3FC" font-size="15" text-anchor="middle">Faiss</text>
+      <text x="1260" y="299" fill="#7DD3FC" font-size="15" text-anchor="middle">Keyword / BM25</text>
+      <path d="M528 278 H570 M756 278 H798 M984 278 H1026" stroke="#6F88B8" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="320" y="432" width="1056" height="310" rx="24" fill="#0E1A35" stroke="#2B426C"/>
+      <text x="346" y="473" fill="#B99CFF" font-size="14" font-weight="700" letter-spacing="2">QUERY &amp; GENERATION PATH</text>
+      <rect x="348" y="502" width="190" height="164" rx="18" fill="#1B2045" stroke="#8B5CF6"/>
+      <text x="443" y="542" fill="#F4F0FF" font-size="19" text-anchor="middle" font-weight="700">Hybrid Retrieval</text>
+      <text x="443" y="575" fill="#BDB0DC" font-size="14" text-anchor="middle">vector candidates</text>
+      <text x="443" y="599" fill="#BDB0DC" font-size="14" text-anchor="middle">keyword candidates</text>
+      <rect x="390" y="620" width="106" height="28" rx="14" fill="url(#violet)"/>
+      <text x="443" y="640" fill="#0B1020" font-size="14" text-anchor="middle" font-weight="800">RRF</text>
+      <rect x="584" y="502" width="190" height="164" rx="18" fill="#1B2045" stroke="#8B5CF6"/>
+      <text x="679" y="542" fill="#F4F0FF" font-size="20" text-anchor="middle" font-weight="700">Agent</text>
+      <text x="679" y="575" fill="#BDB0DC" font-size="14" text-anchor="middle">strategy interface</text>
+      <text x="679" y="599" fill="#BDB0DC" font-size="14" text-anchor="middle">context + prompt</text>
+      <rect x="820" y="502" width="248" height="164" rx="18" fill="#1B2045" stroke="#8B5CF6"/>
+      <text x="944" y="542" fill="#F4F0FF" font-size="20" text-anchor="middle" font-weight="700">Tiered LLM</text>
+      <text x="944" y="574" fill="#BDB0DC" font-size="14" text-anchor="middle">① primary model</text>
+      <text x="944" y="598" fill="#BDB0DC" font-size="14" text-anchor="middle">② backup model</text>
+      <text x="944" y="622" fill="#BDB0DC" font-size="14" text-anchor="middle">③ retrieval summary</text>
+      <rect x="1114" y="502" width="234" height="164" rx="18" fill="#1B2045" stroke="#8B5CF6"/>
+      <text x="1231" y="542" fill="#F4F0FF" font-size="20" text-anchor="middle" font-weight="700">SSE Response</text>
+      <text x="1231" y="575" fill="#BDB0DC" font-size="14" text-anchor="middle">meta · retrieval</text>
+      <text x="1231" y="599" fill="#BDB0DC" font-size="14" text-anchor="middle">token · fallback</text>
+      <text x="1231" y="623" fill="#BDB0DC" font-size="14" text-anchor="middle">error · done</text>
+      <path d="M538 584 H578 M774 584 H814 M1068 584 H1108" stroke="#8E78C7" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+
+    <path d="M252 379 H314" stroke="#6F88B8" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M252 495 H314" stroke="#6F88B8" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M252 611 H314" stroke="#6F88B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g>
+      <rect x="64" y="784" width="1312" height="76" rx="22" fill="#101D3B" stroke="#30466F"/>
+      <text x="92" y="812" fill="#93A9D2" font-size="13" font-weight="700" letter-spacing="2">CROSS-CUTTING</text>
+      <rect x="278" y="802" width="206" height="40" rx="20" fill="#17294B"/><text x="381" y="827" fill="#DCE8FF" font-size="15" text-anchor="middle">Memory · sessions</text>
+      <rect x="508" y="802" width="206" height="40" rx="20" fill="#17294B"/><text x="611" y="827" fill="#DCE8FF" font-size="15" text-anchor="middle">Evaluation · metrics</text>
+      <rect x="738" y="802" width="250" height="40" rx="20" fill="#17294B"/><text x="863" y="827" fill="#DCE8FF" font-size="15" text-anchor="middle">Structured observability</text>
+      <rect x="1012" y="802" width="316" height="40" rx="20" fill="#17294B"/><text x="1170" y="827" fill="#DCE8FF" font-size="15" text-anchor="middle">Filesystem persistence · versioned</text>
+    </g>
+  </g>
+</svg>
