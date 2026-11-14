@@ -35,7 +35,16 @@ class Settings(BaseSettings):
     @classmethod
     def validate_dashscope_base_url(cls, value: object) -> str:
         normalized = str(value).rstrip("/")
-        _HTTP_URL_ADAPTER.validate_python(normalized)
+        parsed = _HTTP_URL_ADAPTER.validate_python(normalized)
+        if (
+            parsed.query is not None
+            or parsed.fragment is not None
+            or str(parsed).rstrip("/") != normalized
+        ):
+            raise ValueError(
+                "dashscope_base_url must be a canonical HTTP(S) base URL "
+                "without query parameters or fragments"
+            )
         return normalized
 
     @model_validator(mode="after")

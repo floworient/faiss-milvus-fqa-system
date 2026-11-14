@@ -46,6 +46,21 @@ def test_dashscope_base_url_rejects_non_http_scheme() -> None:
         Settings(_env_file=None, dashscope_base_url="ftp://gateway.example.com/v1")
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https:/gateway.example.com/api/v1",
+        "https://gateway.example.com/api/v1?tenant=example",
+        "https://gateway.example.com/api/v1#fragment",
+    ],
+)
+def test_dashscope_base_url_rejects_values_unsafe_for_sdk_path_join(
+    base_url: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, dashscope_base_url=base_url)
+
+
 @pytest.mark.parametrize("overlap", [-0.01, 0.51])
 def test_settings_reject_overlap_outside_0_to_0_5(
     tmp_path: Path, overlap: float
