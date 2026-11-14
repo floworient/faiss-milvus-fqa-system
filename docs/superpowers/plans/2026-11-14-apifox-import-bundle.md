@@ -48,7 +48,8 @@
 - Create: `docs/apifox/rag-knowledge-qa.postman_collection.json`
 - Create: `docs/apifox/local.postman_environment.json`
 - Create: `docs/apifox/fixtures/knowledge.md`
-- Create: `docs/apifox/fixtures/evaluation.jsonl`
+- Create: `docs/apifox/fixtures/evaluation.template.jsonl`
+- Create: `docs/apifox/prepare_evaluation.py`
 - Create: `docs/apifox/README.md`
 
 **Interfaces:**

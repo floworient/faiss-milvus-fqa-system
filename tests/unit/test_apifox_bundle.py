@@ -4,22 +4,10 @@ from pathlib import Path
 import subprocess
 import sys
 
-from scripts.generate_apifox_bundle import generate_bundle
+from scripts.generate_apifox_bundle import bundle_matches_generated, generate_bundle
 
 
-EXPECTED_OPERATIONS = {
-    ("GET", "/health"),
-    ("POST", "/api/v1/documents"),
-    ("GET", "/api/v1/documents"),
-    ("GET", "/api/v1/tasks/{task_id}"),
-    ("DELETE", "/api/v1/documents/{document_id}"),
-    ("POST", "/api/v1/retrieval/search"),
-    ("POST", "/api/v1/chat/completions"),
-    ("POST", "/api/v1/chat/completions/stream"),
-    ("GET", "/api/v1/sessions/{session_id}"),
-    ("DELETE", "/api/v1/sessions/{session_id}"),
-    ("POST", "/api/v1/evaluations/retrieval"),
-}
+HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
 
 def _load(path: Path) -> object:
@@ -47,10 +35,25 @@ def _collection_operations(collection: dict[str, object]) -> set[tuple[str, str]
         path = path.replace("{{task_id}}", "{task_id}")
         path = path.replace("{{upload_task_id}}", "{task_id}")
         path = path.replace("{{delete_task_id}}", "{task_id}")
+        path = path.replace("{{missing_task_id}}", "{task_id}")
         path = path.replace("{{document_id}}", "{document_id}")
         path = path.replace("{{session_id}}", "{session_id}")
+        path = path.replace("{{missing_session_id}}", "{session_id}")
         operations.add((method, path))
     return operations
+
+
+def _test_script(collection: dict[str, object], item_name: str) -> str:
+    item = next(
+        item
+        for item in _requests(collection["item"])  # type: ignore[arg-type]
+        if item["name"] == item_name
+    )
+    return "\n".join(
+        line
+        for event in item.get("event", [])
+        for line in event.get("script", {}).get("exec", [])
+    )
 
 
 def test_generate_bundle_covers_api_and_variable_flow(tmp_path: Path) -> None:
@@ -64,10 +67,10 @@ def test_generate_bundle_covers_api_and_variable_flow(tmp_path: Path) -> None:
         (method.upper(), path)
         for path, path_item in openapi["paths"].items()
         for method in path_item
-        if method.lower() in {"get", "post", "delete", "put", "patch"}
+        if method.lower() in HTTP_METHODS
     }
-    assert openapi_operations == EXPECTED_OPERATIONS
-    assert _collection_operations(collection) >= EXPECTED_OPERATIONS
+    assert len(openapi_operations) == 11
+    assert _collection_operations(collection) == openapi_operations
     assert collection["info"]["schema"].endswith(
         "/collection/v2.1.0/collection.json"
     )
@@ -112,12 +115,64 @@ def test_generate_bundle_keeps_files_portable_and_sse_non_json(
                 for line in script.get("exec", [])
             ]
 
-    assert file_sources == ["fixtures/knowledge.md", "fixtures/evaluation.jsonl"]
+    assert file_sources == [
+        "fixtures/knowledge.md",
+        "fixtures/evaluation.runtime.jsonl",
+    ]
     assert all(not Path(source).is_absolute() for source in file_sources)
     assert (tmp_path / "fixtures" / "knowledge.md").is_file()
-    assert (tmp_path / "fixtures" / "evaluation.jsonl").is_file()
+    assert (tmp_path / "fixtures" / "evaluation.template.jsonl").is_file()
+    assert (tmp_path / "prepare_evaluation.py").is_file()
     assert "pm.response.json()" not in "\n".join(sse_scripts)
     assert "text/event-stream" in "\n".join(sse_scripts)
+
+
+def test_polling_scripts_fail_terminal_failures_and_clear_upload_state(
+    tmp_path: Path,
+) -> None:
+    generate_bundle(tmp_path)
+    collection = _load(tmp_path / "rag-knowledge-qa.postman_collection.json")
+
+    upload_script = _test_script(
+        collection, "查询上传任务（成功前可重复执行）"
+    )
+    delete_script = _test_script(
+        collection, "查询删除任务（成功前可重复执行）"
+    )
+
+    assert "pm.expect(body.status).not.eql('failed')" in upload_script
+    assert "pm.environment.unset('document_id')" in upload_script
+    assert "body.code" in upload_script and "body.message" in upload_script
+    assert "pm.expect(body.status).not.eql('failed')" in delete_script
+    assert "body.code" in delete_script and "body.message" in delete_script
+
+
+def test_prepare_evaluation_fixture_uses_uploaded_document_id(
+    tmp_path: Path,
+) -> None:
+    generate_bundle(tmp_path)
+    document_id = "doc_0123456789abcdef0123456789abcdef"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8",
+            str(tmp_path / "prepare_evaluation.py"),
+            "--document-id",
+            document_id,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    row = json.loads(
+        (tmp_path / "fixtures" / "evaluation.runtime.jsonl").read_text("utf-8")
+    )
+    assert row["relevant_document_ids"] == [document_id]
 
 
 def test_generate_bundle_is_deterministic_and_contains_no_secrets(
@@ -139,7 +194,9 @@ def test_generate_bundle_is_deterministic_and_contains_no_secrets(
         if path.is_file()
     }
     for relative_path in relative_files:
-        first_text = (first / relative_path).read_text("utf-8")
+        first_bytes = (first / relative_path).read_bytes()
+        assert b"\r\n" not in first_bytes
+        first_text = first_bytes.decode("utf-8")
         assert first_text == (second / relative_path).read_text("utf-8")
         assert "sk-" not in first_text
         assert "DASHSCOPE_API_KEY" not in first_text
@@ -170,3 +227,57 @@ def test_generator_cli_runs_directly_from_repository_root(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stderr
     assert (output_dir / "openapi.json").is_file()
+
+
+def test_generator_cli_preserves_existing_runtime_tasks(tmp_path: Path) -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    runtime = tmp_path / "runtime"
+    tasks = runtime / "tasks"
+    tasks.mkdir(parents=True)
+    task_path = tasks / "task_0123456789abcdef0123456789abcdef.json"
+    original = {
+        "task_id": "task_0123456789abcdef0123456789abcdef",
+        "action": "upload",
+        "document_id": "doc_0123456789abcdef0123456789abcdef",
+        "source_name": "knowledge.md",
+        "status": "running",
+        "code": None,
+        "message": None,
+        "retryable": False,
+    }
+    task_path.write_text(json.dumps(original), encoding="utf-8")
+    environment = os.environ.copy()
+    environment["RAG_DATA_DIR"] = str(runtime)
+    environment["RAG_DASHSCOPE_API_KEY"] = ""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8",
+            "scripts/generate_apifox_bundle.py",
+            "--output",
+            str(tmp_path / "output"),
+        ],
+        cwd=repository_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(task_path.read_text("utf-8")) == original
+
+
+def test_bundle_drift_detection_and_committed_assets(tmp_path: Path) -> None:
+    candidate = tmp_path / "candidate"
+    generate_bundle(candidate)
+
+    assert bundle_matches_generated(candidate) is True
+    (candidate / "openapi.json").write_text("{}\n", encoding="utf-8")
+    assert bundle_matches_generated(candidate) is False
+
+    repository_root = Path(__file__).resolve().parents[2]
+    assert bundle_matches_generated(repository_root / "docs" / "apifox") is True

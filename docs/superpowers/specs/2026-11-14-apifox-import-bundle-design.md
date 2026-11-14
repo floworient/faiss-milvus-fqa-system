@@ -12,7 +12,8 @@
 - `rag-knowledge-qa.postman_collection.json`：Postman Collection v2.1，用于向 Apifox 导入示例请求、前后置脚本、断言和变量提取。
 - `local.postman_environment.json`：本地环境，包含 `base_url` 以及流程运行时变量。
 - `fixtures/knowledge.md`：文档上传示例。
-- `fixtures/evaluation.jsonl`：检索评测上传示例。
+- `fixtures/evaluation.template.jsonl`：检索评测模板。
+- `prepare_evaluation.py`：使用上传后得到的 `document_id` 生成 `fixtures/evaluation.runtime.jsonl`。
 - `README.md`：导入顺序、运行前置条件、文件选择方式、端到端执行顺序和 SSE 调试说明。
 
 ## Collection 设计
@@ -27,7 +28,7 @@
 6. 评测：上传 JSONL 并执行评测。
 7. 异常用例：非法检索参数、不存在的任务和会话。
 
-Collection 级前置脚本生成 `X-Request-ID`。请求级测试脚本执行状态码、响应类型和关键字段断言，并从响应提取 `task_id`、`document_id`、`session_id`。异步任务使用独立轮询请求；README 明确说明在状态为 `succeeded` 前重复执行，避免依赖 Apifox 未明确保证兼容的 Postman 流程跳转 API。
+Collection 级前置脚本生成 `X-Request-ID`。请求级测试脚本执行状态码、响应类型和关键字段断言，并从响应提取 `task_id`、`document_id`、`session_id`。异步任务使用独立轮询请求；`failed` 终态必须触发断言失败并显示错误，README 明确说明停止流程。评测前使用辅助脚本把动态文档 ID 写入 JSONL，避免固定标签产生虚假的零分报告。
 
 ## 环境变量
 
@@ -47,7 +48,8 @@ Collection 级前置脚本生成 `X-Request-ID`。请求级测试脚本执行状
 ## 生成与验证
 
 - 新增仓库脚本从 `create_app()` 生成确定性的 `openapi.json`，防止手工维护漂移。
-- 新增校验测试读取所有 JSON/JSONL 文件，校验 Collection v2.1 Schema 关键字段、请求路径覆盖、脚本变量引用及 OpenAPI 路由覆盖。
+- 新增校验测试读取所有 JSON/JSONL 文件，校验 Collection v2.1 Schema 关键字段、请求路径覆盖、脚本变量引用及 OpenAPI 路由覆盖，并比较重新生成结果与已提交资产，防止漂移。
+- 生成器导入应用工厂时不得实例化默认应用或修改真实运行时任务。
 - 使用 FastAPI 测试客户端或现有服务对非破坏性请求进行烟雾验证；上传、删除等有状态流程使用临时数据目录执行。
 - 导入包不包含真实凭证、绝对路径或本机私有数据。
 

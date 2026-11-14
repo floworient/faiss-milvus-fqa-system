@@ -176,6 +176,13 @@
                   "pm.test('上传任务状态合法', function () {",
                   "  pm.expect(['pending', 'running', 'succeeded', 'failed']).to.include(body.status);",
                   "});",
+                  "pm.test('上传任务未失败', function () {",
+                  "  pm.expect(body.status).not.eql('failed');",
+                  "});",
+                  "if (body.status === 'failed') {",
+                  "  pm.environment.unset('document_id');",
+                  "  console.error('上传任务失败', body.code, body.message);",
+                  "}",
                   "if (body.status === 'succeeded') {",
                   "  pm.environment.set('document_id', body.document_id);",
                   "}"
@@ -315,7 +322,13 @@
                   "const body = pm.response.json();",
                   "pm.test('删除任务状态合法', function () {",
                   "  pm.expect(['pending', 'running', 'succeeded', 'failed']).to.include(body.status);",
-                  "});"
+                  "});",
+                  "pm.test('删除任务未失败', function () {",
+                  "  pm.expect(body.status).not.eql('failed');",
+                  "});",
+                  "if (body.status === 'failed') {",
+                  "  console.error('删除任务失败', body.code, body.message);",
+                  "}"
                 ]
               }
             }
@@ -762,7 +775,8 @@
                 {
                   "key": "file",
                   "type": "file",
-                  "src": "fixtures/evaluation.jsonl"
+                  "src": "fixtures/evaluation.runtime.jsonl",
+                  "description": "先运行 prepare_evaluation.py 写入当前 document_id。"
                 },
                 {
                   "key": "mode",
