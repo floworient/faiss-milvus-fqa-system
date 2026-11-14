@@ -1,6 +1,8 @@
 import json
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
+import threading
 
 import httpx
 import numpy as np
@@ -410,3 +412,37 @@ async def test_default_app_wires_services_and_degrades_without_api_key(
     assert response.json()["provider_tier"] == 3
     assert response.json()["citations"] == []
     assert response.json()["answer"] == "模型暂时不可用，且未检索到可引用的相关资料。"
+
+
+@pytest.mark.asyncio
+async def test_non_stream_chat_does_not_block_event_loop(tmp_path: Path) -> None:
+    release = threading.Event()
+    ticks = 0
+
+    class BlockingLLM(FakeLLM):
+        def complete(self, prompt: str) -> str:
+            self.prompts.append(prompt)
+            release.wait(timeout=1)
+            return "answer"
+
+    app, _ = build_chat_app(tmp_path, BlockingLLM([]))
+
+    async def heartbeat() -> None:
+        nonlocal ticks
+        deadline = asyncio.get_running_loop().time() + 0.05
+        while asyncio.get_running_loop().time() < deadline:
+            ticks += 1
+            await asyncio.sleep(0.005)
+        release.set()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        request_task = asyncio.create_task(
+            client.post("/api/v1/chat/completions", json={"question": "退货"})
+        )
+        await heartbeat()
+        response = await asyncio.wait_for(request_task, timeout=1)
+
+    assert response.status_code == 200
+    assert ticks >= 2

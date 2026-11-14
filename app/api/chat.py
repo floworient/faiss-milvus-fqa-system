@@ -2,6 +2,7 @@ import json
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.agents.registry import AgentRegistry
 from app.core.errors import AppError
@@ -21,7 +22,8 @@ def agent_registry(request: Request) -> AgentRegistry:
 async def complete(
     payload: ChatCompletionRequest, request: Request
 ) -> ChatCompletionResponse:
-    response = agent_registry(request).get(payload.strategy).run(payload.to_domain())
+    strategy = agent_registry(request).get(payload.strategy)
+    response = await run_in_threadpool(strategy.run, payload.to_domain())
     return ChatCompletionResponse.from_domain(response)
 
 

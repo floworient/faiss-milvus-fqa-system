@@ -1,6 +1,8 @@
 import json
 import logging
 import re
+import time
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path, PurePath
 from threading import Lock
@@ -35,7 +37,7 @@ class TaskStore:
             temporary.write_text(
                 json.dumps(asdict(task), ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            temporary.replace(target)
+            self._replace_with_retry(temporary, target)
 
     def get(self, task_id: str) -> IngestionTask:
         if self._task_id_pattern.fullmatch(task_id) is None:
@@ -54,6 +56,17 @@ class TaskStore:
                 task.message = "Task was interrupted by process restart."
                 task.retryable = True
                 self.save(task)
+
+    @staticmethod
+    def _replace_with_retry(source: Path, target: Path) -> None:
+        for attempt in range(3):
+            try:
+                source.replace(target)
+                return
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
 
 
 class IngestionService:
@@ -197,7 +210,12 @@ class IngestionService:
         return task
 
     def _run_delete(self, task: IngestionTask) -> None:
-        with self._lock:
+        document_guard = (
+            self.conversation_store.document_guard()
+            if self.conversation_store is not None
+            else nullcontext()
+        )
+        with self._lock, document_guard:
             snapshot = self.repository.load_active()
             previous_documents = self._read_optional(self.documents_file)
             previous_tombstones = self._read_optional(self.deleted_sources_file)
@@ -234,8 +252,6 @@ class IngestionService:
                     }
                 )
                 self._write_json_atomic(self.deleted_sources_file, tombstones)
-                if self.conversation_store is not None:
-                    self.conversation_store.redact_document(task.document_id)
                 if staged_source.exists():
                     staged_source.unlink()
             except Exception:
@@ -247,6 +263,16 @@ class IngestionService:
                 if staged_source.exists() and not source.exists():
                     staged_source.replace(source)
                 raise
+            if self.conversation_store is not None:
+                try:
+                    self.conversation_store.redact_document(task.document_id)
+                except Exception:
+                    log_event(
+                        logging.getLogger("app.ingestion"),
+                        "ingestion.citation_cleanup_deferred",
+                        task_id=task.task_id,
+                        document_id=task.document_id,
+                    )
 
     def _save_documents(self, records: Sequence[DocumentRecord]) -> None:
         self._write_json_atomic(self.documents_file, [asdict(item) for item in records])

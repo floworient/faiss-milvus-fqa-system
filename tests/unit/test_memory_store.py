@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -102,3 +103,58 @@ def test_atomic_save_retries_a_transient_windows_permission_error(
 
     assert attempts == 2
     assert store.get(session).messages[0].content == "message"
+
+
+def test_tombstone_redacts_citation_written_after_deletion(
+    tmp_path: Path,
+) -> None:
+    tombstones = tmp_path / "deleted_sources.json"
+    store = FileConversationStore(tmp_path / "sessions", tombstones)
+    session = store.create().session_id
+    append_started = threading.Event()
+
+    def append_late_answer() -> None:
+        append_started.set()
+        store.append_assistant(
+            session,
+            "historical answer",
+            citations=[Citation("chk_1", "doc_1", "secret.md", "secret text")],
+        )
+
+    with store.document_guard():
+        worker = threading.Thread(target=append_late_answer)
+        worker.start()
+        assert append_started.wait(timeout=1)
+        tombstones.write_text(
+            json.dumps(
+                [{"document_id": "doc_1", "source_name": "secret.md", "deleted": True}]
+            ),
+            encoding="utf-8",
+        )
+    worker.join(timeout=1)
+
+    citation = store.get(session).messages[0].citations[0]
+    persisted = (tmp_path / "sessions" / f"{session}.json").read_text("utf-8")
+    assert citation.deleted is True
+    assert citation.excerpt is None
+    assert "secret text" not in persisted
+
+
+def test_tombstone_redacts_legacy_excerpt_on_read(tmp_path: Path) -> None:
+    tombstones = tmp_path / "deleted_sources.json"
+    store = FileConversationStore(tmp_path / "sessions", tombstones)
+    session = store.create().session_id
+    store.append_assistant(
+        session,
+        "historical answer",
+        citations=[Citation("chk_1", "doc_1", "secret.md", "secret text")],
+    )
+    tombstones.write_text(
+        '[{"document_id":"doc_1","source_name":"secret.md","deleted":true}]',
+        encoding="utf-8",
+    )
+
+    citation = store.get(session).messages[0].citations[0]
+
+    assert citation.deleted is True
+    assert citation.excerpt is None

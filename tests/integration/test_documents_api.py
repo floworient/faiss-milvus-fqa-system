@@ -6,6 +6,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.domain.documents import IngestionTask
 from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
 from app.ingestion.parsers import ParserRegistry
 from app.ingestion.service import IngestionService, TaskStore
@@ -266,3 +267,31 @@ def test_task_store_rejects_noncanonical_id_before_path_resolution(
         store.get("task_..\\..\\secret")
 
     assert caught.value.code == "task_not_found"
+
+
+def test_task_store_retries_transient_windows_permission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TaskStore(tmp_path / "tasks")
+    task = IngestionTask(
+        task_id="task_0123456789abcdef0123456789abcdef",
+        action="upload",
+        document_id="doc_1",
+        source_name="guide.txt",
+    )
+    original_replace = Path.replace
+    attempts = 0
+
+    def flaky_replace(path: Path, target: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError(5, "target is temporarily locked")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+
+    store.save(task)
+
+    assert attempts == 2
+    assert store.get(task.task_id).document_id == "doc_1"

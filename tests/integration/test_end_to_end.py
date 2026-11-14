@@ -56,7 +56,9 @@ def build_app(tmp_path: Path):
     repository = IndexRepository(settings.indexes_dir, lambda: next(versions))
     embedding = FakeEmbedding()
     retrieval = RetrievalService(repository, embedding)
-    memory = FileConversationStore(settings.sessions_dir)
+    memory = FileConversationStore(
+        settings.sessions_dir, settings.data_dir / "deleted_sources.json"
+    )
     primary = FakeLLM(["非流式回答", LLMUnavailable("primary down")])
     backup = FakeLLM(["备用回答"])
     strategy = ContextualRAGStrategy(

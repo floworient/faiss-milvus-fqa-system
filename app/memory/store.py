@@ -2,7 +2,7 @@ import json
 import time
 from dataclasses import asdict
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from typing import Any, Literal, Sequence
 
 from app.core.errors import AppError
@@ -11,11 +11,17 @@ from app.memory.models import Citation, Conversation, Message
 
 
 class FileConversationStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, deleted_sources_file: Path | None = None
+    ) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.deleted_sources_file = (
+            Path(deleted_sources_file) if deleted_sources_file is not None else None
+        )
         self._locks: dict[str, Lock] = {}
         self._locks_guard = Lock()
+        self._document_guard = RLock()
 
     def create(self, metadata: dict[str, Any] | None = None) -> Conversation:
         conversation = Conversation(new_id("session"), metadata=metadata or {})
@@ -37,11 +43,13 @@ class FileConversationStore:
             )
             for item in payload.get("messages", [])
         ]
-        return Conversation(
+        conversation = Conversation(
             session_id=payload["session_id"],
             messages=messages,
             metadata=payload.get("metadata", {}),
         )
+        self._redact_deleted(conversation)
+        return conversation
 
     def append_user(self, session_id: str, content: str) -> Message:
         return self._append(session_id, Message("user", content.strip()))
@@ -100,30 +108,36 @@ class FileConversationStore:
 
     def redact_document(self, document_id: str) -> None:
         """Remove persisted source excerpts for a deleted document."""
-        for path in self.root.glob("session_*.json"):
-            session_id = path.stem
-            lock = self._lock_for(session_id)
-            with lock:
-                conversation = self.get(session_id)
-                changed = False
-                for message in conversation.messages:
-                    for citation in message.citations:
-                        if citation.document_id == document_id:
-                            citation.deleted = True
-                            citation.excerpt = None
-                            changed = True
-                if changed:
-                    self._save(conversation)
+        with self._document_guard:
+            for path in self.root.glob("session_*.json"):
+                session_id = path.stem
+                lock = self._lock_for(session_id)
+                with lock:
+                    conversation = self.get(session_id)
+                    changed = False
+                    for message in conversation.messages:
+                        for citation in message.citations:
+                            if citation.document_id == document_id:
+                                citation.deleted = True
+                                citation.excerpt = None
+                                changed = True
+                    if changed:
+                        self._save(conversation)
+
+    def document_guard(self) -> Any:
+        """Serialize document deletion with citation persistence."""
+        return self._document_guard
 
     def _append(self, session_id: str, message: Message) -> Message:
         lock = self._lock_for(session_id)
-        with lock:
+        with self._document_guard, lock:
             conversation = self.get(session_id)
             conversation.messages.append(message)
             self._save(conversation)
         return message
 
     def _save(self, conversation: Conversation) -> None:
+        self._redact_deleted(conversation)
         target = self._path(conversation.session_id)
         temporary = target.with_suffix(".tmp")
         temporary.write_text(
@@ -142,6 +156,29 @@ class FileConversationStore:
                 if attempt == 2:
                     raise
                 time.sleep(0.01 * (attempt + 1))
+
+    def _redact_deleted(self, conversation: Conversation) -> None:
+        deleted_ids = self._deleted_document_ids()
+        if not deleted_ids:
+            return
+        for message in conversation.messages:
+            for citation in message.citations:
+                if citation.document_id in deleted_ids:
+                    citation.deleted = True
+                    citation.excerpt = None
+
+    def _deleted_document_ids(self) -> set[str]:
+        path = self.deleted_sources_file
+        if path is None or not path.is_file():
+            return set()
+        payload = json.loads(path.read_text("utf-8"))
+        return {
+            str(item["document_id"])
+            for item in payload
+            if isinstance(item, dict)
+            and item.get("deleted") is True
+            and item.get("document_id")
+        }
 
     def _lock_for(self, session_id: str) -> Lock:
         with self._locks_guard:

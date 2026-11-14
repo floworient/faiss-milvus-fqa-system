@@ -65,7 +65,9 @@ def build_service_container(settings: Settings) -> ServiceContainer:
         backup_llm = None
     repository = IndexRepository(settings.indexes_dir)
     retrieval = RetrievalService(repository, embedding)
-    memory = FileConversationStore(settings.sessions_dir)
+    memory = FileConversationStore(
+        settings.sessions_dir, settings.data_dir / "deleted_sources.json"
+    )
     ingestion = IngestionService(
         settings,
         ParserRegistry(),
