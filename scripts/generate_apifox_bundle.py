@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -525,16 +526,31 @@ if __name__ == "__main__":
 
 
 def _openapi() -> dict[str, Any]:
-    from app.main import ServiceContainer, create_app
-
     with tempfile.TemporaryDirectory(prefix="rag-apifox-openapi-") as directory:
-        settings = Settings(
-            _env_file=None,
-            dashscope_api_key=None,
-            data_dir=Path(directory) / "runtime",
-        )
-        app = create_app(settings, ServiceContainer())
-        schema = app.openapi()
+        data_dir = str(Path(directory) / "runtime")
+        previous_data_dir = os.environ.get("RAG_DATA_DIR")
+        previous_api_key = os.environ.get("RAG_DASHSCOPE_API_KEY")
+        os.environ["RAG_DATA_DIR"] = data_dir
+        os.environ["RAG_DASHSCOPE_API_KEY"] = ""
+        try:
+            from app.main import ServiceContainer, create_app
+
+            settings = Settings(
+                _env_file=None,
+                dashscope_api_key=None,
+                data_dir=Path(data_dir),
+            )
+            app = create_app(settings, ServiceContainer())
+            schema = app.openapi()
+        finally:
+            if previous_data_dir is None:
+                os.environ.pop("RAG_DATA_DIR", None)
+            else:
+                os.environ["RAG_DATA_DIR"] = previous_data_dir
+            if previous_api_key is None:
+                os.environ.pop("RAG_DASHSCOPE_API_KEY", None)
+            else:
+                os.environ["RAG_DASHSCOPE_API_KEY"] = previous_api_key
     schema["servers"] = [
         {"url": "http://127.0.0.1:8000", "description": "本地开发环境"}
     ]
