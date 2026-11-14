@@ -1,0 +1,946 @@
+{
+  "info": {
+    "name": "RAG Knowledge QA API",
+    "description": "面向 Apifox 的完整调试集合。先导入 local 环境并按 README 执行。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const suffix = Date.now() + '_' + Math.random().toString(16).slice(2);",
+          "pm.environment.set('request_id', 'req_apifox_' + suffix);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 系统",
+      "item": [
+        {
+          "name": "健康检查",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('服务状态正常', function () { pm.expect(body.status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 文档与任务",
+      "item": [
+        {
+          "name": "上传知识文档",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "documents"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "fixtures/knowledge.md",
+                  "description": "导入后如客户端未解析相对路径，请重新选择同目录文件。"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 202', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('返回上传任务', function () {",
+                  "  pm.expect(body.action).to.eql('upload');",
+                  "  pm.expect(body.task_id).to.match(/^task_[0-9a-f]{32}$/);",
+                  "  pm.expect(body.document_id).to.match(/^doc_[0-9a-f]{32}$/);",
+                  "});",
+                  "if (pm.response.code === 202 && body.task_id && body.document_id) {",
+                  "  pm.environment.set('upload_task_id', body.task_id);",
+                  "  pm.environment.set('task_id', body.task_id);",
+                  "  pm.environment.set('document_id', body.document_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询上传任务（成功前可重复执行）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks/{{upload_task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{upload_task_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('上传任务状态合法', function () {",
+                  "  pm.expect(['pending', 'running', 'succeeded', 'failed']).to.include(body.status);",
+                  "});",
+                  "if (body.status === 'succeeded') {",
+                  "  pm.environment.set('document_id', body.document_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询文档列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "documents"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('文档列表为数组', function () { pm.expect(body).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "删除知识文档",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents/{{document_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "documents",
+                "{{document_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 202', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('返回删除任务', function () { pm.expect(body.action).to.eql('delete'); });",
+                  "if (pm.response.code === 202 && body.task_id) {",
+                  "  pm.environment.set('delete_task_id', body.task_id);",
+                  "  pm.environment.set('task_id', body.task_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询删除任务（成功前可重复执行）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks/{{delete_task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{delete_task_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('删除任务状态合法', function () {",
+                  "  pm.expect(['pending', 'running', 'succeeded', 'failed']).to.include(body.status);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 检索",
+      "item": [
+        {
+          "name": "关键词检索",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/retrieval/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "retrieval",
+                "search"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{query}}\",\n  \"mode\": \"keyword\",\n  \"top_k\": 5,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('检索模式为 keyword', function () { pm.expect(body.mode).to.eql('keyword'); });",
+                  "pm.test('检索结果为数组', function () { pm.expect(body.results).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "向量检索",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/retrieval/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "retrieval",
+                "search"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{query}}\",\n  \"mode\": \"vector\",\n  \"top_k\": 5,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('检索模式为 vector', function () { pm.expect(body.mode).to.eql('vector'); });",
+                  "pm.test('检索结果为数组', function () { pm.expect(body.results).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "混合检索",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/retrieval/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "retrieval",
+                "search"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{query}}\",\n  \"mode\": \"hybrid\",\n  \"top_k\": 5,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('检索模式为 hybrid', function () { pm.expect(body.mode).to.eql('hybrid'); });",
+                  "pm.test('检索结果为数组', function () { pm.expect(body.results).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 问答",
+      "item": [
+        {
+          "name": "非流式知识问答",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/completions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"{{query}}\",\n  \"strategy\": \"contextual_rag\",\n  \"retrieval_mode\": \"hybrid\",\n  \"top_k\": 5,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('回答结构正确', function () {",
+                  "  pm.expect(body.answer).to.be.a('string');",
+                  "  pm.expect([1, 2, 3]).to.include(body.provider_tier);",
+                  "  pm.expect(body.citations).to.be.an('array');",
+                  "});",
+                  "if (pm.response.code === 200 && body.session_id) {",
+                  "  pm.environment.set('session_id', body.session_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SSE 流式知识问答",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/completions/stream",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat",
+                "completions",
+                "stream"
+              ]
+            },
+            "description": "请在 Apifox SSE 调试界面检查事件顺序：meta → retrieval → token → done/error。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"{{query}}\",\n  \"strategy\": \"contextual_rag\",\n  \"retrieval_mode\": \"hybrid\",\n  \"top_k\": 5,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "pm.test('响应为 text/event-stream', function () {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 会话",
+      "item": [
+        {
+          "name": "查询会话历史",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sessions",
+                "{{session_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('会话 ID 匹配', function () {",
+                  "  pm.expect(body.session_id).to.eql(pm.environment.get('session_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "删除会话",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sessions",
+                "{{session_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', function () { pm.response.to.have.status(204); });",
+                  "if (pm.response.code === 204) { pm.environment.unset('session_id'); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 评测",
+      "item": [
+        {
+          "name": "运行检索评测",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/retrieval",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "retrieval"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "fixtures/evaluation.jsonl"
+                },
+                {
+                  "key": "mode",
+                  "value": "hybrid",
+                  "type": "text"
+                },
+                {
+                  "key": "top_k",
+                  "value": "5",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_name",
+                  "value": "apifox-smoke",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('返回 X-Request-ID', function () {",
+                  "  pm.expect(pm.response.headers.get('X-Request-ID')).to.be.a('string');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('评测报告结构正确', function () {",
+                  "  pm.expect(body.query_count).to.be.a('number');",
+                  "  pm.expect(body.queries).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 异常用例",
+      "item": [
+        {
+          "name": "非法检索参数（预期 422）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/retrieval/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "retrieval",
+                "search"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{query}}\",\n  \"mode\": \"hybrid\",\n  \"top_k\": 0,\n  \"candidate_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "const body = pm.response.json();",
+                  "pm.test('包含参数校验详情', function () { pm.expect(body.detail).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "不存在的任务（预期 404）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks/{{missing_task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{missing_task_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const body = pm.response.json();",
+                  "pm.test('错误码正确', function () { pm.expect(body.code).to.eql('task_not_found'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "不存在的会话（预期 404）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-ID",
+                "value": "{{request_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{missing_session_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sessions",
+                "{{missing_session_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const body = pm.response.json();",
+                  "pm.test('错误码正确', function () { pm.expect(body.code).to.eql('session_not_found'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

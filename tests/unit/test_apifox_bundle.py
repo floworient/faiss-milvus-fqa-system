@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 from scripts.generate_apifox_bundle import generate_bundle
 
@@ -140,3 +143,30 @@ def test_generate_bundle_is_deterministic_and_contains_no_secrets(
         assert first_text == (second / relative_path).read_text("utf-8")
         assert "sk-" not in first_text
         assert "DASHSCOPE_API_KEY" not in first_text
+
+
+def test_generator_cli_runs_directly_from_repository_root(tmp_path: Path) -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    output_dir = tmp_path / "cli-output"
+    environment = os.environ.copy()
+    environment["RAG_DASHSCOPE_API_KEY"] = ""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8",
+            "scripts/generate_apifox_bundle.py",
+            "--output",
+            str(output_dir),
+        ],
+        cwd=repository_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (output_dir / "openapi.json").is_file()
