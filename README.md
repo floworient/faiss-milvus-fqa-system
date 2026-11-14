@@ -239,6 +239,7 @@ uvicorn app.main:create_app --factory
 
 ## 文档
 
+- [API 接口文档](docs/api.md)
 - [架构说明](docs/architecture.md)
 - [设计规格](docs/superpowers/specs/2026-11-13-rag-knowledge-qa-upgrade-design.md)
 - [实现计划](docs/superpowers/plans/2026-11-13-rag-knowledge-qa-upgrade.md)
