@@ -5,6 +5,7 @@ from typing import Any
 import dashscope
 import numpy as np
 import pytest
+import requests
 
 from app.retrieval.embeddings import DashScopeEmbeddingAdapter, EmbeddingUnavailable
 
@@ -159,3 +160,48 @@ def test_embedding_adapter_maps_provider_errors_without_exposing_message(
 
     assert "InvalidParameter" in str(captured.value)
     assert "sensitive document text" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf"), 1e100, 10**1000],
+)
+def test_embedding_adapter_rejects_non_finite_or_unrepresentable_values(
+    monkeypatch: pytest.MonkeyPatch,
+    value: float | int,
+) -> None:
+    install_embedding_response(
+        monkeypatch,
+        [{"index": 0, "embedding": [value], "type": "dense"}],
+    )
+    adapter = DashScopeEmbeddingAdapter(
+        "key", "model", 1, "https://gateway.example.com/api/v1"
+    )
+
+    with pytest.raises(EmbeddingUnavailable):
+        adapter.embed_texts(["document"])
+
+
+@pytest.mark.parametrize(
+    "provider_error",
+    [
+        requests.exceptions.JSONDecodeError("sensitive body", "not-json", 0),
+        requests.exceptions.ConnectionError("sensitive endpoint details"),
+    ],
+)
+def test_embedding_adapter_sanitizes_sdk_decode_and_transport_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_error: requests.exceptions.RequestException,
+) -> None:
+    def call(**kwargs: Any) -> None:
+        raise provider_error
+
+    monkeypatch.setattr(dashscope.TextEmbedding, "call", staticmethod(call))
+    adapter = DashScopeEmbeddingAdapter(
+        "key", "model", 1, "https://gateway.example.com/api/v1"
+    )
+
+    with pytest.raises(EmbeddingUnavailable) as captured:
+        adapter.embed_texts(["document"])
+
+    assert "sensitive" not in str(captured.value)

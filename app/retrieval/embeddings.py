@@ -1,9 +1,11 @@
+import math
 import re
 from http import HTTPStatus
 from typing import Any, Protocol, Sequence
 
 import dashscope
 import numpy as np
+import requests
 from numpy.typing import NDArray
 
 
@@ -41,12 +43,15 @@ def _request_compatible_embeddings(
     *,
     text_type: str,
 ) -> list[list[float]]:
-    response = dashscope.TextEmbedding.call(
-        model=model,
-        input=list(texts),
-        api_key=api_key,
-        text_type=text_type,
-    )
+    try:
+        response = dashscope.TextEmbedding.call(
+            model=model,
+            input=list(texts),
+            api_key=api_key,
+            text_type=text_type,
+        )
+    except requests.exceptions.RequestException:
+        raise EmbeddingUnavailable("Embedding provider request failed") from None
     status_code = getattr(response, "status_code", None)
     if status_code != HTTPStatus.OK:
         raise EmbeddingUnavailable(
@@ -79,10 +84,23 @@ def _request_compatible_embeddings(
         if (
             not isinstance(embedding, list)
             or not embedding
-            or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in embedding)
+            or any(
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                for value in embedding
+            )
         ):
             raise EmbeddingUnavailable("Embedding provider returned invalid vector")
-        vector = [float(value) for value in embedding]
+        try:
+            vector = [float(value) for value in embedding]
+        except (OverflowError, TypeError, ValueError):
+            raise EmbeddingUnavailable(
+                "Embedding provider returned invalid vector"
+            ) from None
+        float32_max = float(np.finfo(np.float32).max)
+        if any(
+            not math.isfinite(value) or abs(value) > float32_max for value in vector
+        ):
+            raise EmbeddingUnavailable("Embedding provider returned invalid vector")
         if vector_size is None:
             vector_size = len(vector)
         elif len(vector) != vector_size:
