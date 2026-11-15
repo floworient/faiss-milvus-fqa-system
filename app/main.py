@@ -21,7 +21,7 @@ from app.ingestion.chunker import AdaptiveChunker, RegexTokenizer
 from app.ingestion.parsers import ParserRegistry
 from app.ingestion.service import IngestionService, TaskStore
 from app.evaluation.runner import EvaluationRunner
-from app.llm.dashscope import DashScopeLLMAdapter
+from app.llm.openai_compatible import OpenAICompatibleLLMAdapter
 from app.llm.ports import UnavailableLLM
 from app.llm.router import TieredLLMRouter
 from app.memory.store import FileConversationStore
@@ -50,16 +50,16 @@ def build_service_container(settings: Settings) -> ServiceContainer:
             settings.embedding_dimension,
             settings.dashscope_base_url,
         )
-        primary_llm = DashScopeLLMAdapter(
+        primary_llm = OpenAICompatibleLLMAdapter(
             settings.dashscope_api_key,
             settings.primary_llm_model,
-            settings.dashscope_base_url,
+            settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
         )
-        backup_llm = DashScopeLLMAdapter(
+        backup_llm = OpenAICompatibleLLMAdapter(
             settings.dashscope_api_key,
             settings.backup_llm_model,
-            settings.dashscope_base_url,
+            settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
         )
     else:

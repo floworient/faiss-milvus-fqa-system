@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
-from app.main import create_app
+from app.main import build_service_container, create_app
 
 
 def test_settings_create_runtime_directories(tmp_path: Path) -> None:
@@ -59,6 +59,87 @@ def test_dashscope_base_url_rejects_values_unsafe_for_sdk_path_join(
 ) -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, dashscope_base_url=base_url)
+
+
+def test_llm_base_url_defaults_to_openai_compatible_v1() -> None:
+    settings = Settings(_env_file=None)
+
+    assert (
+        settings.llm_base_url
+        == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+
+
+def test_llm_base_url_reads_environment_and_removes_trailing_slashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "RAG_LLM_BASE_URL", "https://gateway.example.com/compatible-mode/v1///"
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.llm_base_url == "https://gateway.example.com/compatible-mode/v1"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https:/gateway.example.com/compatible-mode/v1",
+        "ftp://gateway.example.com/compatible-mode/v1",
+        "https://gateway.example.com/compatible-mode/v1?tenant=example",
+        "https://gateway.example.com/compatible-mode/v1#fragment",
+    ],
+)
+def test_llm_base_url_rejects_unsafe_values(base_url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, llm_base_url=base_url)
+
+
+def test_service_container_uses_separate_llm_and_embedding_base_urls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    embedding_calls: list[str] = []
+    llm_calls: list[tuple[str, str]] = []
+
+    def fake_embedding(
+        api_key: str, model: str, dimension: int, base_url: str
+    ) -> object:
+        embedding_calls.append(base_url)
+        return object()
+
+    def fake_llm(
+        api_key: str,
+        model: str,
+        base_url: str,
+        *,
+        timeout_seconds: float,
+    ) -> object:
+        llm_calls.append((model, base_url))
+        return object()
+
+    monkeypatch.setattr("app.main.DashScopeEmbeddingAdapter", fake_embedding)
+    monkeypatch.setattr(
+        "app.main.OpenAICompatibleLLMAdapter", fake_llm, raising=False
+    )
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path / "runtime",
+        dashscope_api_key="key",
+        dashscope_base_url="https://gateway.example.com/api/v1",
+        llm_base_url="https://gateway.example.com/compatible-mode/v1",
+        primary_llm_model="primary",
+        backup_llm_model="backup",
+    )
+
+    build_service_container(settings)
+
+    assert embedding_calls == ["https://gateway.example.com/api/v1"]
+    assert llm_calls == [
+        ("primary", "https://gateway.example.com/compatible-mode/v1"),
+        ("backup", "https://gateway.example.com/compatible-mode/v1"),
+    ]
 
 
 @pytest.mark.parametrize("overlap", [-0.01, 0.51])
