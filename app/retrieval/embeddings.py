@@ -1,4 +1,6 @@
-from typing import Protocol, Sequence
+import re
+from http import HTTPStatus
+from typing import Any, Protocol, Sequence
 
 import dashscope
 import numpy as np
@@ -25,6 +27,73 @@ class UnavailableEmbedding:
         raise EmbeddingUnavailable("Embedding provider is not configured")
 
 
+def _safe_provider_code(response: object) -> str:
+    code = getattr(response, "code", None)
+    if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", code):
+        return code
+    return "unknown"
+
+
+def _request_compatible_embeddings(
+    model: str,
+    texts: Sequence[str],
+    api_key: str | None,
+    *,
+    text_type: str,
+) -> list[list[float]]:
+    response = dashscope.TextEmbedding.call(
+        model=model,
+        input=list(texts),
+        api_key=api_key,
+        text_type=text_type,
+    )
+    status_code = getattr(response, "status_code", None)
+    if status_code != HTTPStatus.OK:
+        raise EmbeddingUnavailable(
+            "Embedding provider rejected request "
+            f"(status={status_code}, code={_safe_provider_code(response)})"
+        )
+
+    output = getattr(response, "output", None)
+    if not isinstance(output, dict):
+        raise EmbeddingUnavailable("Embedding provider returned malformed output")
+    items = output.get("embeddings")
+    if not isinstance(items, list):
+        raise EmbeddingUnavailable("Embedding provider returned malformed embeddings")
+
+    ordered: list[list[float] | None] = [None] * len(texts)
+    vector_size: int | None = None
+    for item in items:
+        if not isinstance(item, dict):
+            raise EmbeddingUnavailable("Embedding provider returned malformed item")
+        index = item["text_index"] if "text_index" in item else item.get("index")
+        if (
+            isinstance(index, bool)
+            or not isinstance(index, int)
+            or index < 0
+            or index >= len(ordered)
+            or ordered[index] is not None
+        ):
+            raise EmbeddingUnavailable("Embedding provider returned invalid index")
+        embedding = item.get("embedding")
+        if (
+            not isinstance(embedding, list)
+            or not embedding
+            or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in embedding)
+        ):
+            raise EmbeddingUnavailable("Embedding provider returned invalid vector")
+        vector = [float(value) for value in embedding]
+        if vector_size is None:
+            vector_size = len(vector)
+        elif len(vector) != vector_size:
+            raise EmbeddingUnavailable("Embedding provider returned inconsistent vectors")
+        ordered[index] = vector
+
+    if any(vector is None for vector in ordered):
+        raise EmbeddingUnavailable("Embedding provider returned an incomplete batch")
+    return [vector for vector in ordered if vector is not None]
+
+
 class DashScopeEmbeddingAdapter:
     """LlamaIndex DashScope embedding adapter without global Settings mutation."""
 
@@ -35,7 +104,27 @@ class DashScopeEmbeddingAdapter:
 
         from llama_index.embeddings.dashscope import DashScopeEmbedding
 
-        self._model = DashScopeEmbedding(
+        class CompatibleDashScopeEmbedding(DashScopeEmbedding):
+            def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
+                return _request_compatible_embeddings(
+                    self.model_name,
+                    texts,
+                    self._api_key,
+                    text_type=self._text_type,
+                )
+
+            def _get_text_embedding(self, text: str) -> list[float]:
+                return self._get_text_embeddings([text])[0]
+
+            def _get_query_embedding(self, query: str) -> list[float]:
+                return _request_compatible_embeddings(
+                    self.model_name,
+                    [query],
+                    self._api_key,
+                    text_type="query",
+                )[0]
+
+        self._model = CompatibleDashScopeEmbedding(
             api_key=api_key,
             model_name=model,
             embed_batch_size=10,
