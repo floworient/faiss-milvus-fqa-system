@@ -33,4 +33,3 @@ Route text generation through the workspace's working OpenAI-compatible API whil
 - Preserve existing error classes and tiered router behavior.
 - Keep real provider calls out of pytest.
 - Keep `.env` credentials uncommitted.
-

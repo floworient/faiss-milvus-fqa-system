@@ -43,6 +43,13 @@ class DoneThenDisconnectStream(httpx.AsyncByteStream):
         raise httpx.RemoteProtocolError("peer closed after done")
 
 
+class DoneThenTimeoutStream(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"complete"}}]}\n\n'
+        yield b'data: [DONE]\n\n'
+        raise httpx.ReadTimeout("connection remained open")
+
+
 def install_async_transport(
     monkeypatch: pytest.MonkeyPatch,
     handler: Callable[[httpx.Request], httpx.Response],
@@ -111,6 +118,45 @@ async def test_stream_treats_disconnect_after_done_as_complete(
     )
 
     assert [token async for token in adapter.stream("prompt")] == ["complete"]
+
+
+@pytest.mark.asyncio
+async def test_stream_accepts_timeout_after_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_async_transport(
+        monkeypatch,
+        lambda request: httpx.Response(200, stream=DoneThenTimeoutStream()),
+    )
+    adapter = OpenAICompatibleLLMAdapter(
+        "key", "qwen3.8-flash", "https://gateway.example.com/compatible-mode/v1"
+    )
+
+    assert [token async for token in adapter.stream("prompt")] == ["complete"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        [],
+        [b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'],
+    ],
+)
+async def test_stream_rejects_clean_eof_without_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    chunks: list[bytes],
+) -> None:
+    install_async_transport(
+        monkeypatch,
+        lambda request: httpx.Response(200, stream=ChunkStream(chunks)),
+    )
+    adapter = OpenAICompatibleLLMAdapter(
+        "key", "qwen3.8-flash", "https://gateway.example.com/compatible-mode/v1"
+    )
+
+    with pytest.raises(LLMUnavailable):
+        _ = [token async for token in adapter.stream("prompt")]
 
 
 @pytest.mark.asyncio

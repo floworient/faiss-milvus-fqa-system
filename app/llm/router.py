@@ -37,6 +37,8 @@ class TieredLLMRouter:
                         safe_citations,
                         {"fallback_reason": primary_error.reason_code},
                     )
+                except LLMInvalidRequest:
+                    raise
                 except LLMError as backup_error:
                     self._log_fallback(2, 3, backup_error.reason_code)
             else:

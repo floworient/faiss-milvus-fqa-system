@@ -74,12 +74,19 @@ class OpenAICompatibleLLMAdapter:
                         content, event_finished = self._stream_event(
                             json.loads(payload)
                         )
-                        finished = finished or event_finished
                         if content:
                             yield content
+                        finished = finished or event_finished
+                    if finished:
+                        return
+                    raise LLMUnavailable(
+                        "OpenAI-compatible stream ended before completion"
+                    )
         except LLMError:
             raise
         except httpx.TimeoutException as error:
+            if finished:
+                return
             raise LLMTimeout("OpenAI-compatible stream timed out") from error
         except httpx.RequestError as error:
             if finished:

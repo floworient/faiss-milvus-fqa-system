@@ -54,9 +54,12 @@ def main() -> int:
     print(f"provider_tier: {tier}")
     print(f"answer: {result.get('answer', '')}")
 
-    if tier == 3:
+    if tier not in (1, 2):
         reason = result.get("metadata", {}).get("fallback_reason", "unknown")
-        print(f"model unavailable; fallback_reason: {reason}", file=sys.stderr)
+        print(
+            f"model unavailable or invalid tier; fallback_reason: {reason}",
+            file=sys.stderr,
+        )
         return 2
 
     print("live model call succeeded")

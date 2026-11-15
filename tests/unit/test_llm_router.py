@@ -83,6 +83,14 @@ def test_invalid_request_does_not_retry_or_fallback() -> None:
     assert backup.complete_calls == 0
 
 
+def test_backup_invalid_request_does_not_fall_back_to_summary() -> None:
+    primary = FakeLLM(LLMUnavailable("primary down"))
+    backup = FakeLLM(LLMInvalidRequest("bad backup request"))
+
+    with pytest.raises(LLMInvalidRequest):
+        TieredLLMRouter(primary, backup).complete("prompt", citations())
+
+
 def test_both_models_failing_returns_deterministic_tier_three_summary() -> None:
     primary = FakeLLM(LLMUnavailable("primary down"))
     backup = FakeLLM(LLMTimeout("backup down"))
