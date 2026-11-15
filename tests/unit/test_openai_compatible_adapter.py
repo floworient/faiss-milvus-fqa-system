@@ -36,6 +36,13 @@ class ChunkStream(httpx.AsyncByteStream):
             yield chunk
 
 
+class DoneThenDisconnectStream(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"complete"}}]}\n\n'
+        yield b'data: [DONE]\n\n'
+        raise httpx.RemoteProtocolError("peer closed after done")
+
+
 def install_async_transport(
     monkeypatch: pytest.MonkeyPatch,
     handler: Callable[[httpx.Request], httpx.Response],
@@ -89,6 +96,42 @@ async def test_stream_parses_fragmented_sse_tokens(
     )
 
     assert [token async for token in adapter.stream("prompt")] == ["hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_stream_treats_disconnect_after_done_as_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_async_transport(
+        monkeypatch,
+        lambda request: httpx.Response(200, stream=DoneThenDisconnectStream()),
+    )
+    adapter = OpenAICompatibleLLMAdapter(
+        "key", "qwen3.8-flash", "https://gateway.example.com/compatible-mode/v1"
+    )
+
+    assert [token async for token in adapter.stream("prompt")] == ["complete"]
+
+
+@pytest.mark.asyncio
+async def test_stream_ignores_usage_only_frame_before_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [
+        b'data: {"choices":[{"delta":{"content":"complete"},"finish_reason":null}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}]}\n\n',
+        b'data: {"choices":[],"usage":{"total_tokens":10}}\n\n',
+        b'data: [DONE]\n\n',
+    ]
+    install_async_transport(
+        monkeypatch,
+        lambda request: httpx.Response(200, stream=ChunkStream(chunks)),
+    )
+    adapter = OpenAICompatibleLLMAdapter(
+        "key", "qwen3.8-flash", "https://gateway.example.com/compatible-mode/v1"
+    )
+
+    assert [token async for token in adapter.stream("prompt")] == ["complete"]
 
 
 @pytest.mark.parametrize(

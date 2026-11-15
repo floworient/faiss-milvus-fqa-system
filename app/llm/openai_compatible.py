@@ -49,6 +49,7 @@ class OpenAICompatibleLLMAdapter:
             raise LLMUnavailable("OpenAI-compatible response was malformed") from error
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
+        finished = False
         try:
             async with httpx.AsyncClient(
                 base_url=f"{self.base_url}/",
@@ -61,7 +62,6 @@ class OpenAICompatibleLLMAdapter:
                     json=self._payload(prompt, stream=True),
                 ) as response:
                     self._raise_for_response(response)
-                    finished = False
                     async for line in response.aiter_lines():
                         if finished or not line.startswith("data:"):
                             continue
@@ -71,7 +71,10 @@ class OpenAICompatibleLLMAdapter:
                             continue
                         if not payload:
                             continue
-                        content = self._stream_content(json.loads(payload))
+                        content, event_finished = self._stream_event(
+                            json.loads(payload)
+                        )
+                        finished = finished or event_finished
                         if content:
                             yield content
         except LLMError:
@@ -79,6 +82,8 @@ class OpenAICompatibleLLMAdapter:
         except httpx.TimeoutException as error:
             raise LLMTimeout("OpenAI-compatible stream timed out") from error
         except httpx.RequestError as error:
+            if finished:
+                return
             raise LLMUnavailable("OpenAI-compatible stream failed") from error
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise LLMUnavailable("OpenAI-compatible stream was malformed") from error
@@ -106,15 +111,27 @@ class OpenAICompatibleLLMAdapter:
         return content
 
     @staticmethod
-    def _stream_content(payload: object) -> str:
+    def _stream_event(payload: object) -> tuple[str, bool]:
         if not isinstance(payload, dict):
             raise TypeError("stream payload must be an object")
-        content = payload["choices"][0].get("delta", {}).get("content", "")
+        choices = payload.get("choices")
+        if not isinstance(choices, list):
+            raise TypeError("stream choices must be a list")
+        if not choices:
+            return "", False
+
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            raise TypeError("stream choice must be an object")
+        delta = choice.get("delta", {})
+        if not isinstance(delta, dict):
+            raise TypeError("stream delta must be an object")
+        content = delta.get("content", "")
         if content is None:
-            return ""
+            content = ""
         if not isinstance(content, str):
             raise TypeError("stream content must be text")
-        return content
+        return content, choice.get("finish_reason") is not None
 
     @staticmethod
     def _raise_for_response(response: httpx.Response) -> None:
